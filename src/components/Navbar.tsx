@@ -1,18 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useSession, signIn, signOut, getProviders } from "next-auth/react";
 import { useState, useEffect } from "react";
-
-const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export function Navbar() {
   const { data: session, status } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isDemo, setIsDemo] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (DEMO_MODE && status === "unauthenticated") {
-      signIn("demo", { redirect: false });
+    if (status === "unauthenticated") {
+      getProviders().then((providers) => {
+        const demoAvailable = !!providers?.demo;
+        setIsDemo(demoAvailable);
+        if (demoAvailable) {
+          signIn("demo", { redirect: false });
+        }
+      });
     }
   }, [status]);
 
@@ -82,14 +87,14 @@ export function Navbar() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : isDemo === false ? (
               <button
                 onClick={() => signIn("azure-ad")}
                 className="bg-primary-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-primary-700"
               >
                 Sign in with Microsoft
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
