@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       dispositionRationale: entry.disposition_rationale as string | undefined,
     });
 
-    return new NextResponse(pdfBytes, {
+    return new NextResponse(Buffer.from(pdfBytes), {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="audit-${entry.id}.pdf"`,
