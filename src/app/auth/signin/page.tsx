@@ -1,22 +1,35 @@
 "use client";
 
-import { signIn } from "next-auth/react";
+import { getProviders, signIn, useSession } from "next-auth/react";
 import { useEffect } from "react";
-
-const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+import { useRouter } from "next/navigation";
 
 export default function SignInPage() {
+  const { status } = useSession();
+  const router = useRouter();
+
   useEffect(() => {
-    if (DEMO_MODE) {
-      signIn("demo", { callbackUrl: "/" });
-    } else {
-      signIn("azure-ad", { callbackUrl: "/" });
+    if (status === "authenticated") {
+      router.replace("/");
+      return;
     }
-  }, []);
+    if (status === "loading") return;
+
+    getProviders().then((providers) => {
+      if (!providers) return;
+      if (providers.demo) {
+        signIn("demo", { redirect: false }).then((res) => {
+          if (res?.ok) router.replace("/");
+        });
+      } else if (providers["azure-ad"]) {
+        signIn("azure-ad", { callbackUrl: "/" });
+      }
+    });
+  }, [status, router]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh]">
-      <p className="text-gray-500">Redirecting to sign in...</p>
+      <p className="text-gray-500">Signing in...</p>
     </div>
   );
 }

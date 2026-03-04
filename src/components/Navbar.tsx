@@ -1,18 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useSession, signIn, signOut, getProviders } from "next-auth/react";
 import { useState, useEffect } from "react";
-
-const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export function Navbar() {
   const { data: session, status } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (DEMO_MODE && status === "unauthenticated") {
-      signIn("demo", { redirect: false });
+    if (status === "unauthenticated") {
+      getProviders().then((providers) => {
+        if (providers?.demo) {
+          signIn("demo", { redirect: false });
+        }
+      });
     }
   }, [status]);
 
