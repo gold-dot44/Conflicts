@@ -2,11 +2,19 @@
 
 import Link from "next/link";
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
 export function Navbar() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (DEMO_MODE && status === "unauthenticated") {
+      signIn("demo", { redirect: false });
+    }
+  }, [status]);
 
   return (
     <nav className="bg-white border-b border-gray-200 shadow-sm">
