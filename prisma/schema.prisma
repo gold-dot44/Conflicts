@@ -1,0 +1,154 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pg_trgm, fuzzystrmatch, pgcrypto]
+}
+
+enum EntityType {
+  person
+  company
+}
+
+enum MatterStatus {
+  open
+  closed
+  pending
+}
+
+enum EntityMatterRole {
+  client
+  adverse_party
+  co_party
+  witness
+  expert
+  insurer
+  opposing_counsel
+  judge
+  other
+}
+
+enum CorporateLinkType {
+  parent
+  subsidiary
+  affiliate
+  division
+}
+
+enum ConflictDisposition {
+  no_conflict
+  potential_conflict
+  conflict_confirmed
+  waiver_obtained
+}
+
+model Entity {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clioContactId  Int?       @unique @map("clio_contact_id")
+  fullLegalName  String     @map("full_legal_name")
+  firstName      String?    @map("first_name")
+  lastName       String?    @map("last_name")
+  entityType     EntityType @map("entity_type")
+  aliases        String[]   @default([])
+  taxIdHash      String?    @map("tax_id_hash")
+  dateOfBirth    DateTime?  @map("date_of_birth") @db.Date
+  email          String?
+  phone          String?
+  sourceSystem   String     @map("source_system")
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+
+  matterRoles    EntityMatterRole_[] @relation("entity_roles")
+  parentLinks    CorporateLink[]     @relation("parent_entity")
+  childLinks     CorporateLink[]     @relation("child_entity")
+
+  @@map("entities")
+}
+
+model Matter {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clioMatterId        Int?         @unique @map("clio_matter_id")
+  matterName          String       @map("matter_name")
+  matterNumber        String?      @map("matter_number")
+  status              MatterStatus @default(open)
+  responsibleAttorney String?      @map("responsible_attorney")
+  practiceArea        String?      @map("practice_area")
+  openDate            DateTime?    @map("open_date") @db.Date
+  closeDate           DateTime?    @map("close_date") @db.Date
+  sourceSystem        String       @map("source_system")
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  entityRoles         EntityMatterRole_[] @relation("matter_roles")
+  ethicalWalls        EthicalWall[]
+
+  @@map("matters")
+}
+
+// Named EntityMatterRole_ to avoid conflict with the enum
+model EntityMatterRole_ {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityId     String           @map("entity_id") @db.Uuid
+  matterId     String           @map("matter_id") @db.Uuid
+  role         EntityMatterRole
+  notes        String?
+  sourceSystem String           @map("source_system")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+
+  entity       Entity           @relation("entity_roles", fields: [entityId], references: [id])
+  matter       Matter           @relation("matter_roles", fields: [matterId], references: [id])
+
+  @@map("entity_matter_roles")
+}
+
+model CorporateLink {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parentEntityId   String            @map("parent_entity_id") @db.Uuid
+  childEntityId    String            @map("child_entity_id") @db.Uuid
+  relationshipType CorporateLinkType @map("relationship_type")
+  ownershipPct     Decimal?          @map("ownership_pct") @db.Decimal
+  source           String
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+
+  parentEntity     Entity            @relation("parent_entity", fields: [parentEntityId], references: [id])
+  childEntity      Entity            @relation("child_entity", fields: [childEntityId], references: [id])
+
+  @@map("corporate_links")
+}
+
+model AuditLog {
+  id                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  searchedBy            String               @map("searched_by")
+  searchTerms           String               @map("search_terms")
+  searchTimestamp       DateTime             @default(now()) @map("search_timestamp") @db.Timestamptz()
+  algorithmsApplied     Json                 @map("algorithms_applied")
+  resultsSnapshot       Json                 @map("results_snapshot")
+  disposition           ConflictDisposition?
+  dispositionBy         String?              @map("disposition_by")
+  dispositionRationale  String?              @map("disposition_rationale")
+  dispositionTimestamp  DateTime?            @map("disposition_timestamp") @db.Timestamptz()
+  relatedDocuments      String[]             @default([]) @map("related_documents")
+  matterId              String?              @map("matter_id") @db.Uuid
+  entityId              String?              @map("entity_id") @db.Uuid
+
+  @@map("audit_log")
+}
+
+model EthicalWall {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  screenedAttorney    String   @map("screened_attorney")
+  screenedAttorneyUpn String   @map("screened_attorney_upn")
+  matterId            String   @map("matter_id") @db.Uuid
+  createdBy           String   @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  memoUrl             String?  @map("memo_url")
+  isActive            Boolean  @default(true) @map("is_active")
+
+  matter              Matter   @relation(fields: [matterId], references: [id])
+
+  @@map("ethical_walls")
+}
