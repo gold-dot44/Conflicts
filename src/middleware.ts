@@ -1,12 +1,19 @@
 import { withAuth } from "next-auth/middleware";
+import { NextResponse } from "next/server";
 
-export default withAuth({
-  callbacks: {
-    authorized({ token }) {
-      return !!token;
-    },
-  },
-});
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+
+export default DEMO_MODE
+  ? function middleware() {
+      return NextResponse.next();
+    }
+  : withAuth({
+      callbacks: {
+        authorized({ token }) {
+          return !!token;
+        },
+      },
+    });
 
 export const config = {
   matcher: [

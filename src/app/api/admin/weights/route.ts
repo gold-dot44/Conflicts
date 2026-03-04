@@ -4,10 +4,19 @@ import { authOptions, hasPermission } from "@/lib/auth";
 import { query } from "@/lib/db";
 import type { FuzzyWeights } from "@/types";
 
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+
 /**
  * Admin endpoint for managing fuzzy matching weights.
  */
 export async function GET() {
+  if (DEMO_MODE) {
+    return NextResponse.json({
+      weights: { levenshtein: 0.3, trigram: 0.3, soundex: 0.1, metaphone: 0.15, fullText: 0.15 },
+      commonNameSuppressions: ["Smith", "Johnson", "Williams", "Jones"],
+    });
+  }
+
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -31,6 +40,18 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  if (DEMO_MODE) {
+    const body = await request.json();
+    if (body.weights) {
+      const w: FuzzyWeights = body.weights;
+      const sum = w.levenshtein + w.trigram + w.soundex + w.metaphone + w.fullText;
+      if (Math.abs(sum - 1.0) > 0.01) {
+        return NextResponse.json({ error: "Weights must sum to 1.0" }, { status: 400 });
+      }
+    }
+    return NextResponse.json({ success: true });
+  }
+
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

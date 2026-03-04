@@ -1,9 +1,10 @@
-import { BlobServiceClient } from "@azure/storage-blob";
+const DEMO_MODE = process.env.DEMO_MODE === "true";
 
-let blobServiceClient: BlobServiceClient | null = null;
+let blobServiceClient: any = null;
 
-function getClient(): BlobServiceClient {
+function getClient() {
   if (!blobServiceClient) {
+    const { BlobServiceClient } = require("@azure/storage-blob");
     const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
     if (!connectionString) throw new Error("AZURE_STORAGE_CONNECTION_STRING not set");
     blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
@@ -21,6 +22,7 @@ export async function uploadBlob(
   data: Buffer | Uint8Array,
   contentType: string
 ): Promise<string> {
+  if (DEMO_MODE) return `https://demo.blob.core.windows.net/${containerName}/${blobName}`;
   const client = getClient();
   const containerClient = client.getContainerClient(containerName);
   await containerClient.createIfNotExists();
