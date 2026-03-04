@@ -101,9 +101,8 @@ export const authOptions: NextAuthOptions = {
       };
     },
   },
-  pages: DEMO_MODE ? {} : {
-    signIn: "/api/auth/signin",
-    error: "/api/auth/error",
+  pages: {
+    signIn: "/auth/signin",
   },
   session: { strategy: "jwt" },
 };

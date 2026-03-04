@@ -3,10 +3,19 @@
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 export default function Home() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
 
   if (!session) {
+    if (DEMO_MODE && status === "loading") {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <p className="text-gray-500">Signing in...</p>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <h1 className="text-4xl font-bold text-gray-900 mb-4">
