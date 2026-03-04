@@ -1,6 +1,9 @@
 import type { NextAuthOptions, Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
+import CredentialsProvider from "next-auth/providers/credentials";
 import type { AppRole } from "@/types";
+
+const DEMO_MODE = process.env.DEMO_MODE === "true";
 
 // Entra ID group IDs → application roles mapping
 // Configure these in your Azure AD app registration
@@ -21,32 +24,47 @@ function resolveRole(groups: string[]): AppRole["name"] {
   return "readonly";
 }
 
-export const authOptions: NextAuthOptions = {
-  providers: [
-    {
-      id: "azure-ad",
-      name: "Microsoft Entra ID",
-      type: "oauth",
-      wellKnown: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/v2.0/.well-known/openid-configuration`,
-      clientId: process.env.AZURE_AD_CLIENT_ID!,
-      clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope: "openid profile email User.Read GroupMember.Read.All",
-        },
-      },
-      profile(profile) {
-        return {
-          id: profile.sub,
-          name: profile.name,
-          email: profile.email ?? profile.preferred_username,
-          image: null,
-        };
-      },
+const demoProvider = CredentialsProvider({
+  id: "demo",
+  name: "Demo",
+  credentials: {},
+  async authorize() {
+    return { id: "demo-user", name: "Demo User", email: "demo@example.com" };
+  },
+});
+
+const azureProvider = {
+  id: "azure-ad",
+  name: "Microsoft Entra ID",
+  type: "oauth" as const,
+  wellKnown: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/v2.0/.well-known/openid-configuration`,
+  clientId: process.env.AZURE_AD_CLIENT_ID!,
+  clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
+  authorization: {
+    params: {
+      scope: "openid profile email User.Read GroupMember.Read.All",
     },
-  ],
+  },
+  profile(profile: Record<string, string>) {
+    return {
+      id: profile.sub,
+      name: profile.name,
+      email: profile.email ?? profile.preferred_username,
+      image: null,
+    };
+  },
+};
+
+export const authOptions: NextAuthOptions = {
+  providers: DEMO_MODE ? [demoProvider] : [azureProvider],
   callbacks: {
     async jwt({ token, account, profile }) {
+      if (DEMO_MODE) {
+        token.upn = "demo@example.com";
+        token.role = "admin";
+        token.groups = [];
+        return token;
+      }
       if (account && profile) {
         token.accessToken = account.access_token;
         token.upn =
@@ -83,7 +101,7 @@ export const authOptions: NextAuthOptions = {
       };
     },
   },
-  pages: {
+  pages: DEMO_MODE ? {} : {
     signIn: "/api/auth/signin",
     error: "/api/auth/error",
   },
