@@ -19,6 +19,7 @@ export const config = {
   matcher: [
     "/search/:path*",
     "/lateral-import/:path*",
+    "/historical-import/:path*",
     "/ethical-walls/:path*",
     "/audit/:path*",
     "/admin/:path*",
@@ -29,6 +30,7 @@ export const config = {
     "/api/conflict-checks/:path*",
     "/api/ethical-walls/:path*",
     "/api/lateral-import/:path*",
+    "/api/historical-import/:path*",
     "/api/audit/:path*",
     "/api/admin/:path*",
   ],
