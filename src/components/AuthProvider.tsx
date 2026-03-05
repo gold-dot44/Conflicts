@@ -22,7 +22,9 @@ function DemoAutoSignIn({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (DEMO_MODE && status === "unauthenticated") {
-      signIn("demo", { redirect: false });
+      signIn("demo", { redirect: false }).then((res) => {
+        if (res?.ok) window.location.reload();
+      });
     }
   }, [status]);
 
