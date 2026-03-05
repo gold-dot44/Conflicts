@@ -61,6 +61,8 @@ const DEMO_AUDIT = [
   },
 ];
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   if (DEMO_MODE) {
     return NextResponse.json({ trail: DEMO_AUDIT });

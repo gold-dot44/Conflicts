@@ -9,6 +9,8 @@ import { DEMO_MODE } from "@/lib/env";
  * Exchanges the authorization code for access + refresh tokens and
  * persists them to the database (or in-memory for demo mode).
  */
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const error = request.nextUrl.searchParams.get("error");

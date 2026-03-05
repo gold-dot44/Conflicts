@@ -9,6 +9,8 @@ import { DEMO_MODE } from "@/lib/env";
 /**
  * Admin endpoint for managing fuzzy matching weights.
  */
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   if (DEMO_MODE) {
     return NextResponse.json({

@@ -4,6 +4,8 @@ import { logger } from "@/lib/logger";
 
 import { DEMO_MODE } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+
 export async function POST() {
   // Check connection: demo mode uses globalThis, production checks DB
   if (DEMO_MODE) {

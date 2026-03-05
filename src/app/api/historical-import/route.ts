@@ -16,6 +16,8 @@ import type {
  *  - "preview": Given rows + mappings + defaults, return preview of what will be created
  *  - "import": Execute the import
  */
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   const contentType = request.headers.get("content-type") ?? "";
 

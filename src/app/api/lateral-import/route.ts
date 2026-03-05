@@ -8,6 +8,8 @@ import type { ColumnMapping } from "@/types";
 /**
  * Step 1: Upload and parse file, return headers and suggested mappings.
  */
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {

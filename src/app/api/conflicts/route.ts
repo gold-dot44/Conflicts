@@ -6,6 +6,8 @@ import type { DispositionRequest } from "@/types";
 
 import { DEMO_MODE } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   if (DEMO_MODE) {
     return NextResponse.json({ success: true });

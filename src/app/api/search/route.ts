@@ -37,6 +37,8 @@ async function getSearchConfig(): Promise<{
   return { weights, suppressions };
 }
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   if (DEMO_MODE) {
     const body: SearchRequest = await request.json();
