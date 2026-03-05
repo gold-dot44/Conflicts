@@ -1,7 +1,8 @@
 "use client";
 
-import { SessionProvider } from "next-auth/react";
+import { SessionProvider, signIn, useSession } from "next-auth/react";
 import type { Session } from "next-auth";
+import { useEffect } from "react";
 
 const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
@@ -16,10 +17,22 @@ const demoSession: Session = {
 // Attach extra fields after creation to avoid TS strict literal check
 Object.assign(demoSession.user!, { upn: "demo@example.com", role: "admin", groups: [] });
 
+function DemoAutoSignIn({ children }: { children: React.ReactNode }) {
+  const { status } = useSession();
+
+  useEffect(() => {
+    if (DEMO_MODE && status === "unauthenticated") {
+      signIn("demo", { redirect: false });
+    }
+  }, [status]);
+
+  return <>{children}</>;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider session={DEMO_MODE ? demoSession : undefined}>
-      {children}
+      <DemoAutoSignIn>{children}</DemoAutoSignIn>
     </SessionProvider>
   );
 }
