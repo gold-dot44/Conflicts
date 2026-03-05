@@ -59,15 +59,15 @@ export default function Home() {
           color="purple"
         />
         <DashboardCard
-          title="Add Entity"
-          description="Add a new person or company to the conflicts database."
-          href="/entities/new"
+          title="New Matter Intake"
+          description="Open a new matter with clients, adverse parties, and automatic conflict pre-checks."
+          href="/matters/new"
           color="teal"
         />
         <DashboardCard
-          title="Add Matter"
-          description="Create a new matter and link it to an existing entity."
-          href="/matters/new"
+          title="Add Entity"
+          description="Add a new person or company to the conflicts database."
+          href="/entities/new"
           color="orange"
         />
         <DashboardCard
