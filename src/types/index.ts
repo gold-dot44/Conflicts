@@ -74,6 +74,101 @@ export interface DispositionRequest {
   rationale: string;
 }
 
+// --- Conflict Check Request types ---
+
+export type CheckRequestType =
+  | "new_client"
+  | "new_matter"
+  | "lateral_hire"
+  | "new_party"
+  | "general";
+
+export type CheckRequestStatus =
+  | "draft"
+  | "searching"
+  | "pending_review"
+  | "cleared"
+  | "blocked"
+  | "cleared_with_wall";
+
+export type SubjectRole =
+  | "prospective_client"
+  | "adverse_party"
+  | "related_individual"
+  | "opposing_counsel"
+  | "witness"
+  | "expert"
+  | "insurer"
+  | "co_party"
+  | "other";
+
+export interface CheckRequestSubject {
+  id: string;
+  requestId: string;
+  subjectName: string;
+  subjectRole: SubjectRole;
+  subjectType: EntityType | "unknown";
+  searchCompleted: boolean;
+  auditLogId: string | null;
+  results: SearchResult[];
+  disposition: ConflictDisposition | null;
+  dispositionBy: string | null;
+  dispositionRationale: string | null;
+  dispositionAt: string | null;
+  crossReferences: CrossReference[];
+}
+
+export interface CrossReference {
+  subjectName: string;
+  subjectRole: SubjectRole;
+  matchedEntityId: string;
+  matchedEntityName: string;
+  conflictType: string;
+  matterName: string;
+  severity: "critical" | "warning" | "info";
+}
+
+export interface ConflictCheckRequest {
+  id: string;
+  requestNumber: string;
+  requestType: CheckRequestType;
+  prospectiveMatter: string;
+  requestingAttorney: string;
+  requestedAt: string;
+  requestedByUpn: string;
+  assignedAnalystUpn: string | null;
+  status: CheckRequestStatus;
+  subjects: CheckRequestSubject[];
+  reviewedByUpn: string | null;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Plain-English description of why a result matched */
+export type MatchReason =
+  | "exact_name"
+  | "similar_spelling"
+  | "sounds_similar"
+  | "partial_match"
+  | "corporate_family"
+  | "alias_match";
+
+export interface EnrichedSearchResult extends SearchResult {
+  matchReasons: MatchReason[];
+  matchDescription: string;
+}
+
+/** Admin sensitivity settings (plain-English wrapper around FuzzyWeights) */
+export interface SensitivitySettings {
+  typos: number;        // 0-100, maps to levenshtein
+  partial: number;      // 0-100, maps to trigram
+  phonetic: number;     // 0-100, maps to combined soundex + metaphone
+  keyword: number;      // 0-100, maps to fullText
+  threshold: number;    // 0-100, minimum composite score
+}
+
 export interface LateralImportRow {
   fullLegalName: string;
   firstName?: string;

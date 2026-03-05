@@ -1,4 +1,9 @@
-import type { SearchResult, EntityMatterRole } from "@/types";
+import type {
+  SearchResult, EntityMatterRole, ConflictCheckRequest,
+  CheckRequestSubject, CheckRequestType, CheckRequestStatus,
+  SubjectRole, ConflictDisposition, CrossReference, MatchReason,
+  EnrichedSearchResult, EntityType,
+} from "@/types";
 
 /** Standalone matter record with all linked parties */
 export interface DemoMatter {
@@ -51,6 +56,60 @@ const SEED_ENTITIES: SearchResult[] = [
     entityId: "demo-4",
     fullLegalName: "Jane Doe",
     firstName: "Jane", lastName: "Doe", entityType: "person",
+    aliases: [],
+    compositeScore: 0, levenshteinScore: 0, trigramScore: 0,
+    soundexMatch: false, metaphoneMatch: false, fullTextScore: 0,
+    matters: [], corporateFamily: [],
+  },
+  {
+    entityId: "demo-5",
+    fullLegalName: "Acme Holdings LLC",
+    firstName: null, lastName: null, entityType: "company",
+    aliases: [],
+    compositeScore: 0, levenshteinScore: 0, trigramScore: 0,
+    soundexMatch: false, metaphoneMatch: false, fullTextScore: 0,
+    matters: [], corporateFamily: [],
+  },
+  {
+    entityId: "demo-6",
+    fullLegalName: "Acme Technologies Inc.",
+    firstName: null, lastName: null, entityType: "company",
+    aliases: ["Acme Tech"],
+    compositeScore: 0, levenshteinScore: 0, trigramScore: 0,
+    soundexMatch: false, metaphoneMatch: false, fullTextScore: 0,
+    matters: [], corporateFamily: [],
+  },
+  {
+    entityId: "demo-7",
+    fullLegalName: "Globex Corporation",
+    firstName: null, lastName: null, entityType: "company",
+    aliases: ["Globex Corp"],
+    compositeScore: 0, levenshteinScore: 0, trigramScore: 0,
+    soundexMatch: false, metaphoneMatch: false, fullTextScore: 0,
+    matters: [], corporateFamily: [],
+  },
+  {
+    entityId: "demo-8",
+    fullLegalName: "Jonathan Smith",
+    firstName: "Jonathan", lastName: "Smith", entityType: "person",
+    aliases: ["Jon Smith"],
+    compositeScore: 0, levenshteinScore: 0, trigramScore: 0,
+    soundexMatch: false, metaphoneMatch: false, fullTextScore: 0,
+    matters: [], corporateFamily: [],
+  },
+  {
+    entityId: "demo-9",
+    fullLegalName: "Joan Smythe",
+    firstName: "Joan", lastName: "Smythe", entityType: "person",
+    aliases: [],
+    compositeScore: 0, levenshteinScore: 0, trigramScore: 0,
+    soundexMatch: false, metaphoneMatch: false, fullTextScore: 0,
+    matters: [], corporateFamily: [],
+  },
+  {
+    entityId: "demo-10",
+    fullLegalName: "David Martinez",
+    firstName: "David", lastName: "Martinez", entityType: "person",
     aliases: [],
     compositeScore: 0, levenshteinScore: 0, trigramScore: 0,
     soundexMatch: false, metaphoneMatch: false, fullTextScore: 0,
@@ -112,6 +171,19 @@ const SEED_MATTERS: DemoMatter[] = [
       { entityId: "demo-4", role: "client" },
     ],
   },
+  {
+    matterId: "m-5",
+    matterName: "Globex Corp Annual Compliance",
+    matterNumber: "2024-033",
+    status: "open",
+    responsibleAttorney: "Lisa Park",
+    practiceArea: "Regulatory",
+    openDate: "2024-02-01",
+    closeDate: null,
+    parties: [
+      { entityId: "demo-7", role: "client" },
+    ],
+  },
 ];
 
 // Mutable in-memory stores
@@ -120,6 +192,179 @@ const matters: DemoMatter[] = [...SEED_MATTERS];
 
 let matterCounter = 100;
 let entityCounter = 100;
+let requestCounter = 147;
+let subjectCounter = 500;
+
+// --- Conflict Check Request seed data ---
+
+const SEED_CHECK_REQUESTS: ConflictCheckRequest[] = [
+  {
+    id: "cr-1",
+    requestNumber: "#2024-0147",
+    requestType: "new_client",
+    prospectiveMatter: "Acme Corp M&A Advisory",
+    requestingAttorney: "Michael Chen",
+    requestedAt: "2026-03-05T14:30:00Z",
+    requestedByUpn: "michael.chen@firm.com",
+    assignedAnalystUpn: "sarah.johnson@firm.com",
+    status: "pending_review",
+    subjects: [
+      {
+        id: "sub-1",
+        requestId: "cr-1",
+        subjectName: "Acme Corporation",
+        subjectRole: "prospective_client",
+        subjectType: "company",
+        searchCompleted: true,
+        auditLogId: "audit-1",
+        results: [],
+        disposition: "no_conflict",
+        dispositionBy: "sarah.johnson@firm.com",
+        dispositionRationale: "Existing client — no adverse relationships.",
+        dispositionAt: "2026-03-05T14:45:00Z",
+        crossReferences: [],
+      },
+      {
+        id: "sub-2",
+        requestId: "cr-1",
+        subjectName: "Widget Industries LLC",
+        subjectRole: "adverse_party",
+        subjectType: "company",
+        searchCompleted: true,
+        auditLogId: "audit-2",
+        results: [],
+        disposition: "potential_conflict",
+        dispositionBy: "sarah.johnson@firm.com",
+        dispositionRationale: "Widget is the defendant in an active case where Acme (our prospective client) is the plaintiff. Escalating per firm policy.",
+        dispositionAt: "2026-03-05T14:50:00Z",
+        crossReferences: [
+          {
+            subjectName: "Acme Corporation",
+            subjectRole: "prospective_client",
+            matchedEntityId: "demo-3",
+            matchedEntityName: "Widget Industries LLC",
+            conflictType: "Entity is adverse party in open matter with prospective client",
+            matterName: "Acme Corp v. Widget Industries",
+            severity: "critical",
+          },
+        ],
+      },
+      {
+        id: "sub-3",
+        requestId: "cr-1",
+        subjectName: "John Smith",
+        subjectRole: "related_individual",
+        subjectType: "person",
+        searchCompleted: true,
+        auditLogId: "audit-3",
+        results: [],
+        disposition: null,
+        dispositionBy: null,
+        dispositionRationale: null,
+        dispositionAt: null,
+        crossReferences: [],
+      },
+    ],
+    reviewedByUpn: null,
+    reviewedAt: null,
+    reviewNotes: null,
+    createdAt: "2026-03-05T14:30:00Z",
+    updatedAt: "2026-03-05T14:50:00Z",
+  },
+  {
+    id: "cr-2",
+    requestNumber: "#2024-0146",
+    requestType: "new_matter",
+    prospectiveMatter: "Widget Industries Trademark Filing",
+    requestingAttorney: "Lisa Park",
+    requestedAt: "2026-03-05T10:15:00Z",
+    requestedByUpn: "lisa.park@firm.com",
+    assignedAnalystUpn: "sarah.johnson@firm.com",
+    status: "cleared",
+    subjects: [
+      {
+        id: "sub-4",
+        requestId: "cr-2",
+        subjectName: "Widget Industries LLC",
+        subjectRole: "prospective_client",
+        subjectType: "company",
+        searchCompleted: true,
+        auditLogId: "audit-4",
+        results: [],
+        disposition: "no_conflict",
+        dispositionBy: "sarah.johnson@firm.com",
+        dispositionRationale: "Existing client, new matter type.",
+        dispositionAt: "2026-03-05T10:30:00Z",
+        crossReferences: [],
+      },
+      {
+        id: "sub-5",
+        requestId: "cr-2",
+        subjectName: "National Trademark Board",
+        subjectRole: "other",
+        subjectType: "company",
+        searchCompleted: true,
+        auditLogId: "audit-5",
+        results: [],
+        disposition: "no_conflict",
+        dispositionBy: "sarah.johnson@firm.com",
+        dispositionRationale: "No matches found.",
+        dispositionAt: "2026-03-05T10:32:00Z",
+        crossReferences: [],
+      },
+    ],
+    reviewedByUpn: null,
+    reviewedAt: null,
+    reviewNotes: null,
+    createdAt: "2026-03-05T10:15:00Z",
+    updatedAt: "2026-03-05T10:32:00Z",
+  },
+  {
+    id: "cr-3",
+    requestNumber: "#2024-0145",
+    requestType: "lateral_hire",
+    prospectiveMatter: "Lateral Hire — David Martinez from Baker & Sterling",
+    requestingAttorney: "Robert Kim",
+    requestedAt: "2026-03-04T09:00:00Z",
+    requestedByUpn: "robert.kim@firm.com",
+    assignedAnalystUpn: "sarah.johnson@firm.com",
+    status: "pending_review",
+    subjects: [
+      {
+        id: "sub-6",
+        requestId: "cr-3",
+        subjectName: "David Martinez",
+        subjectRole: "related_individual",
+        subjectType: "person",
+        searchCompleted: true,
+        auditLogId: "audit-6",
+        results: [],
+        disposition: "potential_conflict",
+        dispositionBy: "sarah.johnson@firm.com",
+        dispositionRationale: "Lateral hire previously represented Widget Industries at Baker & Sterling, creating a potential conflict with Acme Corp v. Widget.",
+        dispositionAt: "2026-03-04T10:00:00Z",
+        crossReferences: [],
+      },
+    ],
+    reviewedByUpn: null,
+    reviewedAt: null,
+    reviewNotes: null,
+    createdAt: "2026-03-04T09:00:00Z",
+    updatedAt: "2026-03-04T10:00:00Z",
+  },
+];
+
+const checkRequests: ConflictCheckRequest[] = [...SEED_CHECK_REQUESTS];
+
+// --- Demo attorneys for search/autocomplete ---
+export const DEMO_ATTORNEYS = [
+  { name: "Michael Chen", upn: "michael.chen@firm.com", role: "partner" },
+  { name: "Sarah Johnson", upn: "sarah.johnson@firm.com", role: "analyst" },
+  { name: "Robert Kim", upn: "robert.kim@firm.com", role: "reviewer" },
+  { name: "Lisa Park", upn: "lisa.park@firm.com", role: "partner" },
+  { name: "David Martinez", upn: "david.martinez@firm.com", role: "associate" },
+  { name: "Jennifer Walsh", upn: "jennifer.walsh@firm.com", role: "partner" },
+];
 
 // --- Entity operations ---
 
@@ -172,7 +417,6 @@ export function addPartyToMatter(
   if (!matter) return false;
   const entity = entities.find((e) => e.entityId === entityId);
   if (!entity) return false;
-  // Don't add duplicate
   if (matter.parties.some((p) => p.entityId === entityId)) return false;
   matter.parties.push({ entityId, role });
   return true;
@@ -243,6 +487,60 @@ function similarity(a: string, b: string): number {
   return intersection / Math.max(keysA.length, keysB.length);
 }
 
+/** Simple phonetic check: do two strings start with the same sound? */
+function soundsLike(a: string, b: string): boolean {
+  const al = a.toLowerCase().replace(/[^a-z]/g, "");
+  const bl = b.toLowerCase().replace(/[^a-z]/g, "");
+  if (al.length < 2 || bl.length < 2) return false;
+  // Simple: same first 2 consonants
+  const consonants = (s: string) => s.replace(/[aeiou]/g, "").slice(0, 3);
+  return consonants(al) === consonants(bl) && al !== bl;
+}
+
+/** Determine match reasons for a result */
+function getMatchReasons(query: string, entity: SearchResult): MatchReason[] {
+  const reasons: MatchReason[] = [];
+  const q = query.toLowerCase();
+  const name = entity.fullLegalName.toLowerCase();
+
+  if (q === name) {
+    reasons.push("exact_name");
+  } else if (entity.aliases.some((a) => a.toLowerCase() === q)) {
+    reasons.push("alias_match");
+  } else {
+    const sim = similarity(q, entity.fullLegalName);
+    if (sim >= 0.7) reasons.push("similar_spelling");
+    else if (sim >= 0.3) reasons.push("partial_match");
+
+    if (soundsLike(q, entity.fullLegalName) || soundsLike(q, entity.lastName ?? "")) {
+      reasons.push("sounds_similar");
+    }
+  }
+
+  if (entity.corporateFamily.length > 0 && reasons.length === 0) {
+    reasons.push("corporate_family");
+  }
+
+  if (reasons.length === 0) reasons.push("partial_match");
+  return reasons;
+}
+
+/** Convert match reasons to plain English */
+function matchDescription(reasons: MatchReason[], entity: SearchResult): string {
+  const descriptions: string[] = [];
+  for (const r of reasons) {
+    switch (r) {
+      case "exact_name": descriptions.push("exact name"); break;
+      case "alias_match": descriptions.push(`alias "${entity.aliases[0]}"`); break;
+      case "similar_spelling": descriptions.push("similar spelling (Levenshtein)"); break;
+      case "sounds_similar": descriptions.push("sounds similar (phonetic match)"); break;
+      case "partial_match": descriptions.push("partial name match"); break;
+      case "corporate_family": descriptions.push("corporate family link"); break;
+    }
+  }
+  return "Matched on: " + descriptions.join(" + ");
+}
+
 export function searchEntities(
   query: string,
   searchType: "all" | "person" | "company"
@@ -267,4 +565,254 @@ export function searchEntities(
     })
     .filter((e) => e.compositeScore >= 0.15)
     .sort((a, b) => b.compositeScore - a.compositeScore);
+}
+
+/** Enriched search with match reasons */
+export function searchEntitiesEnriched(
+  query: string,
+  searchType: "all" | "person" | "company"
+): EnrichedSearchResult[] {
+  const results = searchEntities(query, searchType);
+  return results.map((r) => {
+    const reasons = getMatchReasons(query, r);
+    return {
+      ...r,
+      matchReasons: reasons,
+      matchDescription: matchDescription(reasons, r),
+    };
+  });
+}
+
+// --- Conflict Check Request operations ---
+
+export function getAllCheckRequests(): ConflictCheckRequest[] {
+  return checkRequests;
+}
+
+export function getCheckRequestById(id: string): ConflictCheckRequest | undefined {
+  return checkRequests.find((r) => r.id === id);
+}
+
+export function getPendingReviewRequests(): ConflictCheckRequest[] {
+  return checkRequests.filter((r) => r.status === "pending_review");
+}
+
+export function getRecentCheckRequests(limit = 20): ConflictCheckRequest[] {
+  return [...checkRequests]
+    .sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime())
+    .slice(0, limit);
+}
+
+/**
+ * Detect cross-references between subjects within a single check request.
+ * If entity A is the prospective client and entity B (adverse party) is
+ * adverse to A in an existing matter, that's a critical conflict.
+ */
+function detectCrossReferences(
+  subjects: Array<{ subjectName: string; subjectRole: SubjectRole; results: SearchResult[] }>
+): Map<string, CrossReference[]> {
+  const crossRefs = new Map<string, CrossReference[]>();
+
+  for (const subject of subjects) {
+    const refs: CrossReference[] = [];
+
+    for (const result of subject.results) {
+      for (const matter of result.matters) {
+        // Check if any other subject in this request is linked to the same matter
+        for (const otherSubject of subjects) {
+          if (otherSubject.subjectName === subject.subjectName) continue;
+
+          for (const otherResult of otherSubject.results) {
+            for (const otherMatter of otherResult.matters) {
+              if (otherMatter.matterId === matter.matterId) {
+                // Same matter, different parties — potential conflict
+                const isAdverse = (
+                  (matter.role === "client" && otherMatter.role === "adverse_party") ||
+                  (matter.role === "adverse_party" && otherMatter.role === "client")
+                );
+                if (isAdverse && matter.status === "open") {
+                  refs.push({
+                    subjectName: otherSubject.subjectName,
+                    subjectRole: otherSubject.subjectRole,
+                    matchedEntityId: result.entityId,
+                    matchedEntityName: result.fullLegalName,
+                    conflictType: `Entity is adverse party in open matter with ${otherSubject.subjectRole.replace(/_/g, " ")}`,
+                    matterName: matter.matterName,
+                    severity: "critical",
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    crossRefs.set(subject.subjectName, refs);
+  }
+
+  return crossRefs;
+}
+
+export function createCheckRequest(data: {
+  requestType: CheckRequestType;
+  prospectiveMatter: string;
+  requestingAttorney: string;
+  subjects: Array<{
+    subjectName: string;
+    subjectRole: SubjectRole;
+    subjectType: EntityType | "unknown";
+  }>;
+}): ConflictCheckRequest {
+  const requestId = `cr-${++requestCounter}`;
+  const now = new Date().toISOString();
+
+  // Run search for each subject
+  const searchedSubjects: CheckRequestSubject[] = data.subjects.map((s) => {
+    const searchType = s.subjectType === "unknown" ? "all" : s.subjectType;
+    const results = searchEntities(s.subjectName, searchType);
+
+    return {
+      id: `sub-${++subjectCounter}`,
+      requestId,
+      subjectName: s.subjectName,
+      subjectRole: s.subjectRole,
+      subjectType: s.subjectType,
+      searchCompleted: true,
+      auditLogId: `demo-audit-${subjectCounter}`,
+      results,
+      disposition: null,
+      dispositionBy: null,
+      dispositionRationale: null,
+      dispositionAt: null,
+      crossReferences: [],
+    };
+  });
+
+  // Detect cross-references
+  const crossRefMap = detectCrossReferences(searchedSubjects);
+  for (const subject of searchedSubjects) {
+    subject.crossReferences = crossRefMap.get(subject.subjectName) ?? [];
+  }
+
+  const hasAttentionItems = searchedSubjects.some(
+    (s) => s.crossReferences.length > 0 || s.results.some((r) => r.compositeScore >= 0.5)
+  );
+
+  const request: ConflictCheckRequest = {
+    id: requestId,
+    requestNumber: `#2024-${String(requestCounter).padStart(4, "0")}`,
+    requestType: data.requestType,
+    prospectiveMatter: data.prospectiveMatter,
+    requestingAttorney: data.requestingAttorney,
+    requestedAt: now,
+    requestedByUpn: "demo@example.com",
+    assignedAnalystUpn: "demo@example.com",
+    status: hasAttentionItems ? "searching" : "searching",
+    subjects: searchedSubjects,
+    reviewedByUpn: null,
+    reviewedAt: null,
+    reviewNotes: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  checkRequests.unshift(request);
+  return request;
+}
+
+export function updateSubjectDisposition(
+  requestId: string,
+  subjectId: string,
+  disposition: ConflictDisposition,
+  rationale: string,
+  dispositionBy: string
+): boolean {
+  const request = checkRequests.find((r) => r.id === requestId);
+  if (!request) return false;
+
+  const subject = request.subjects.find((s) => s.id === subjectId);
+  if (!subject) return false;
+
+  subject.disposition = disposition;
+  subject.dispositionBy = dispositionBy;
+  subject.dispositionRationale = rationale;
+  subject.dispositionAt = new Date().toISOString();
+  request.updatedAt = new Date().toISOString();
+
+  // Check if all subjects have dispositions
+  const allDisposed = request.subjects.every((s) => s.disposition !== null);
+  const hasConflict = request.subjects.some(
+    (s) => s.disposition === "potential_conflict" || s.disposition === "conflict_confirmed"
+  );
+
+  if (allDisposed) {
+    request.status = hasConflict ? "pending_review" : "cleared";
+  }
+
+  return true;
+}
+
+export function batchClearLowRisk(
+  requestId: string,
+  threshold: number,
+  dispositionBy: string
+): number {
+  const request = checkRequests.find((r) => r.id === requestId);
+  if (!request) return 0;
+
+  let cleared = 0;
+  for (const subject of request.subjects) {
+    if (subject.disposition !== null) continue;
+    const maxScore = Math.max(0, ...subject.results.map((r) => r.compositeScore));
+    if (maxScore < threshold && subject.crossReferences.length === 0) {
+      subject.disposition = "no_conflict";
+      subject.dispositionBy = dispositionBy;
+      subject.dispositionRationale = `Auto-cleared: all results below ${(threshold * 100).toFixed(0)}% confidence threshold.`;
+      subject.dispositionAt = new Date().toISOString();
+      cleared++;
+    }
+  }
+
+  request.updatedAt = new Date().toISOString();
+  return cleared;
+}
+
+export function reviewCheckRequest(
+  requestId: string,
+  decision: CheckRequestStatus,
+  reviewNotes: string,
+  reviewerUpn: string
+): boolean {
+  const request = checkRequests.find((r) => r.id === requestId);
+  if (!request) return false;
+
+  request.status = decision;
+  request.reviewedByUpn = reviewerUpn;
+  request.reviewedAt = new Date().toISOString();
+  request.reviewNotes = reviewNotes;
+  request.updatedAt = new Date().toISOString();
+  return true;
+}
+
+/** For search results page: get enriched results for a subject */
+export function getEnrichedSubjectResults(
+  subjectName: string,
+  subjectType: EntityType | "unknown"
+): EnrichedSearchResult[] {
+  const searchType = subjectType === "unknown" ? "all" : subjectType;
+  return searchEntitiesEnriched(subjectName, searchType);
+}
+
+/** Demo stats for the reviewer dashboard */
+export function getDemoStats() {
+  const today = new Date().toISOString().split("T")[0];
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  return {
+    todayChecks: checkRequests.filter((r) => r.requestedAt >= today).length || 12,
+    weekChecks: checkRequests.filter((r) => r.requestedAt >= weekAgo).length || 47,
+    pending: checkRequests.filter((r) => r.status === "pending_review").length,
+    activeWalls: 2,
+  };
 }

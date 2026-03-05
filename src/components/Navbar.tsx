@@ -19,10 +19,16 @@ export function Navbar() {
             {session && (
               <>
                 <Link
+                  href="/"
+                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
+                >
+                  New Check
+                </Link>
+                <Link
                   href="/search"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
-                  Search
+                  Quick Search
                 </Link>
                 <Link
                   href="/lateral-import"
@@ -47,6 +53,13 @@ export function Navbar() {
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
                   Admin
+                </Link>
+                <Link
+                  href="/help"
+                  className="text-gray-400 hover:text-gray-600 px-2 py-2 text-sm"
+                  title="Help & Glossary"
+                >
+                  ?
                 </Link>
               </>
             )}
