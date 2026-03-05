@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { setClioTokens } from "@/lib/clio/client";
 import { query } from "@/lib/db";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 /**
  * OAuth 2.0 callback for Clio authorization.

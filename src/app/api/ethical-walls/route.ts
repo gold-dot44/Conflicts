@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions, hasPermission } from "@/lib/auth";
 import { createEthicalWall, listEthicalWalls, removeEthicalWall } from "@/lib/ethical-walls";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 const DEMO_WALLS = [
   {

@@ -1,7 +1,14 @@
 import { query } from "./db";
 import { clioFetch } from "./clio/client";
 import { generateScreeningMemo } from "./pdf";
-import { uploadBlob } from "./blob-storage";
+import { uploadBlob, generateSasUrl } from "./blob-storage";
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function validateUuid(id: string): string {
+  if (!UUID_REGEX.test(id)) throw new Error("Invalid ID format");
+  return id;
+}
 
 export interface EthicalWall {
   id: string;
@@ -40,7 +47,8 @@ export async function createEthicalWall(params: {
   );
 
   // 2. Create RLS policy for this specific screening
-  const policyName = `wall_${wall.id.replace(/-/g, "_")}`;
+  const safeId = validateUuid(wall.id);
+  const policyName = `wall_${safeId.replace(/-/g, "_")}`;
   await query(
     `CREATE POLICY ${policyName} ON entity_matter_roles
      FOR SELECT
@@ -73,28 +81,27 @@ export async function createEthicalWall(params: {
     createdAt: new Date().toISOString(),
   });
 
-  // 5. Upload to Azure Blob Storage
-  const memoUrl = await uploadBlob(
-    process.env.AZURE_STORAGE_CONTAINER_AUDIT ?? "audit-trails",
-    `screening-memos/${wall.id}.pdf`,
-    memoPdf,
-    "application/pdf"
-  );
+  // 5. Upload to Azure Blob Storage (store path only, not raw URL)
+  const containerName = process.env.AZURE_STORAGE_CONTAINER_AUDIT ?? "audit-trails";
+  const blobPath = `screening-memos/${wall.id}.pdf`;
+  await uploadBlob(containerName, blobPath, memoPdf, "application/pdf");
 
-  // 6. Update wall record with memo URL
+  // 6. Update wall record with blob path (NOT raw URL — use generateSasUrl for access)
+  const memoRef = `${containerName}/${blobPath}`;
   await query(
     `UPDATE ethical_walls SET memo_url = $1 WHERE id = $2`,
-    [memoUrl, wall.id]
+    [memoRef, wall.id]
   );
 
-  return { ...wall, memoUrl, matterName: matter?.matter_name ?? "" };
+  return { ...wall, memoUrl: memoRef, matterName: matter?.matter_name ?? "" };
 }
 
 /**
  * Remove an ethical wall (deactivate).
  */
 export async function removeEthicalWall(wallId: string): Promise<void> {
-  const policyName = `wall_${wallId.replace(/-/g, "_")}`;
+  const safeId = validateUuid(wallId);
+  const policyName = `wall_${safeId.replace(/-/g, "_")}`;
   try {
     await query(`DROP POLICY IF EXISTS ${policyName} ON entity_matter_roles`);
   } catch {

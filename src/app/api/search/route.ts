@@ -7,7 +7,7 @@ import { searchEntities } from "@/lib/demo-data";
 import { query } from "@/lib/db";
 import type { SearchRequest, FuzzyWeights } from "@/types";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 /**
  * Fetch admin-configured weights and suppressions from app_config.
@@ -56,12 +56,15 @@ export async function POST(request: NextRequest) {
 
   const body: SearchRequest = await request.json();
 
-  if (!body.query || body.query.trim().length < 2) {
+  // #5: Sanitize and limit search input
+  const sanitizedQuery = body.query?.trim().slice(0, 500).replace(/[<>]/g, "") ?? "";
+  if (sanitizedQuery.length < 2) {
     return NextResponse.json(
       { error: "Search query must be at least 2 characters" },
       { status: 400 }
     );
   }
+  body.query = sanitizedQuery;
 
   // Fetch admin-configured weights and suppressions from DB
   const { weights, suppressions } = await getSearchConfig();

@@ -1,14 +1,15 @@
 /**
  * Clio API v4 client with rate limiting, cursor pagination, and field management.
  *
- * Tokens are stored in the PostgreSQL oauth_tokens table (encrypted at rest
- * via column-level encryption or Azure TDE). Falls back to in-memory storage
- * only in demo mode.
+ * Tokens are encrypted at the column level using pgp_sym_encrypt/pgp_sym_decrypt
+ * via the pgcrypto extension. The encryption key is stored in the
+ * TOKEN_ENCRYPTION_KEY environment variable, never in the database.
  */
 
 import { query } from "../db";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
+const TOKEN_KEY = process.env.TOKEN_ENCRYPTION_KEY ?? "dev-only-key";
 
 interface ClioTokens {
   accessToken: string;
@@ -70,13 +71,13 @@ export async function setClioTokens(t: ClioTokens): Promise<void> {
 
   await query(
     `INSERT INTO oauth_tokens (provider, access_token, refresh_token, expires_at, updated_at)
-     VALUES ('clio', $1, $2, to_timestamp($3 / 1000.0), NOW())
+     VALUES ('clio', pgp_sym_encrypt($1, $4), pgp_sym_encrypt($2, $4), to_timestamp($3 / 1000.0), NOW())
      ON CONFLICT (provider) DO UPDATE SET
-       access_token = $1,
-       refresh_token = $2,
+       access_token = pgp_sym_encrypt($1, $4),
+       refresh_token = pgp_sym_encrypt($2, $4),
        expires_at = to_timestamp($3 / 1000.0),
        updated_at = NOW()`,
-    [t.accessToken, t.refreshToken, t.expiresAt]
+    [t.accessToken, t.refreshToken, t.expiresAt, TOKEN_KEY]
   );
 }
 
@@ -92,8 +93,11 @@ async function loadTokens(): Promise<ClioTokens | null> {
     refresh_token: string;
     expires_at: string;
   }>(
-    `SELECT access_token, refresh_token, EXTRACT(EPOCH FROM expires_at) * 1000 AS expires_at
-     FROM oauth_tokens WHERE provider = 'clio'`
+    `SELECT pgp_sym_decrypt(access_token, $1) as access_token,
+            pgp_sym_decrypt(refresh_token, $1) as refresh_token,
+            EXTRACT(EPOCH FROM expires_at) * 1000 AS expires_at
+     FROM oauth_tokens WHERE provider = 'clio'`,
+    [TOKEN_KEY]
   );
 
   if (rows.length === 0) return null;

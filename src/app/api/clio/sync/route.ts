@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 export async function POST() {
   // Check connection: demo mode uses globalThis, production checks DB
@@ -56,7 +57,14 @@ export async function POST() {
       matters: result.matters,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
+    // #15: Log full error server-side, return generic message to client
+    logger.error("Clio sync failed", {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    const message = DEMO_MODE
+      ? (err instanceof Error ? err.message : "Unknown error")
+      : "Sync failed. Check server logs.";
     const timestamp = new Date().toISOString();
 
     if (DEMO_MODE) {

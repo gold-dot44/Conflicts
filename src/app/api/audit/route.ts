@@ -4,7 +4,7 @@ import { authOptions, hasPermission } from "@/lib/auth";
 import { getAuditTrail } from "@/lib/audit";
 import { generateAuditPdf } from "@/lib/pdf";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 const DEMO_AUDIT = [
   {

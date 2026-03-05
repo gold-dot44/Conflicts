@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createMatter, getAllMatters, getEntityById } from "@/lib/demo-data";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 export async function GET() {
   if (!DEMO_MODE) {

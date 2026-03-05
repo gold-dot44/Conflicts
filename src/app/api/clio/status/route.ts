@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 export async function GET() {
   const configured = !!(process.env.CLIO_CLIENT_ID && process.env.CLIO_CLIENT_SECRET);

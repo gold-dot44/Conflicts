@@ -4,7 +4,7 @@ import { authOptions, hasPermission } from "@/lib/auth";
 import { recordDisposition } from "@/lib/audit";
 import type { DispositionRequest } from "@/types";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 export async function POST(request: NextRequest) {
   if (DEMO_MODE) {
