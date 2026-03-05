@@ -1,9 +1,8 @@
 /**
  * Clio data synchronization: bulk import and incremental sync.
  */
-import { clioFetch, clioPaginate, CONTACT_FIELDS, MATTER_FIELDS } from "./client";
-import { query, withTransaction } from "../db";
-import type { PoolClient } from "pg";
+import { clioFetch, clioPaginate, CONTACT_FIELDS, MATTER_FIELDS, RELATIONSHIP_FIELDS } from "./client";
+import { query } from "../db";
 
 interface ClioContact {
   id: number;
@@ -37,6 +36,38 @@ interface ClioMatter {
   }>;
 }
 
+interface ClioRelationship {
+  id: number;
+  description: string | null;
+  contact: { id: number; name: string; type: string };
+  matter: { id: number };
+}
+
+/**
+ * Map Clio relationship descriptions to our role enum values.
+ * Clio uses free-text descriptions; we normalize to our role taxonomy.
+ */
+function mapRelationshipRole(description: string | null): string {
+  const desc = (description ?? "").toLowerCase();
+
+  if (desc.includes("adverse") || desc.includes("defendant") || desc.includes("opposing party")) {
+    return "adverse_party";
+  }
+  if (desc.includes("co-party") || desc.includes("co-plaintiff") || desc.includes("co-defendant")) {
+    return "co_party";
+  }
+  if (desc.includes("witness")) return "witness";
+  if (desc.includes("expert")) return "expert";
+  if (desc.includes("insur")) return "insurer";
+  if (desc.includes("opposing counsel") || desc.includes("defense counsel") || desc.includes("attorney for")) {
+    return "opposing_counsel";
+  }
+  if (desc.includes("judge") || desc.includes("magistrate")) return "judge";
+  if (desc.includes("client")) return "client";
+
+  return "other";
+}
+
 /**
  * Bulk import all contacts from Clio into the entities table.
  */
@@ -58,7 +89,7 @@ export async function bulkImportContacts(): Promise<number> {
 }
 
 /**
- * Bulk import all matters from Clio.
+ * Bulk import all matters from Clio, including their relationships.
  */
 export async function bulkImportMatters(): Promise<number> {
   const matters = await clioPaginate<ClioMatter>("/matters", MATTER_FIELDS);
@@ -66,6 +97,8 @@ export async function bulkImportMatters(): Promise<number> {
   let imported = 0;
   for (const matter of matters) {
     await upsertMatter(matter);
+    // Sync relationships for each matter (adverse parties, witnesses, etc.)
+    await syncMatterRelationships(matter.id);
     imported++;
   }
 
@@ -135,21 +168,61 @@ export async function upsertMatter(matter: ClioMatter): Promise<void> {
 
   // Link client to matter if present
   if (matter.client?.id) {
-    await linkClioClientToMatter(matter.client.id, matter.id);
+    await linkClioContactToMatter(matter.client.id, matter.id, "client");
   }
 }
 
-async function linkClioClientToMatter(
+/**
+ * Sync all relationships for a Clio matter.
+ * Queries the Clio Relationships endpoint to capture adverse parties,
+ * witnesses, experts, insurers, opposing counsel, judges, etc.
+ */
+export async function syncMatterRelationships(clioMatterId: number): Promise<number> {
+  let relationships: ClioRelationship[];
+  try {
+    relationships = await clioPaginate<ClioRelationship>(
+      `/relationships?matter_id=${clioMatterId}`,
+      RELATIONSHIP_FIELDS
+    );
+  } catch {
+    // Relationships endpoint may not be available on all Clio plans
+    return 0;
+  }
+
+  let synced = 0;
+  for (const rel of relationships) {
+    // Ensure the related contact exists as an entity
+    // (it may not have been imported yet if it's not a client)
+    try {
+      const contact = await clioFetch<{ data: ClioContact }>(
+        `/contacts/${rel.contact.id}?fields=${encodeURIComponent(CONTACT_FIELDS)}`
+      );
+      await upsertContactAsEntity(contact.data);
+    } catch {
+      // Contact may have been deleted
+      continue;
+    }
+
+    const role = mapRelationshipRole(rel.description);
+    await linkClioContactToMatter(rel.contact.id, clioMatterId, role);
+    synced++;
+  }
+
+  return synced;
+}
+
+async function linkClioContactToMatter(
   clioContactId: number,
-  clioMatterId: number
+  clioMatterId: number,
+  role: string
 ): Promise<void> {
   await query(
     `INSERT INTO entity_matter_roles (entity_id, matter_id, role, source_system)
-     SELECT e.id, m.id, 'client', 'clio'
+     SELECT e.id, m.id, $3, 'clio'
      FROM entities e, matters m
      WHERE e.clio_contact_id = $1 AND m.clio_matter_id = $2
      ON CONFLICT DO NOTHING`,
-    [clioContactId, clioMatterId]
+    [clioContactId, clioMatterId, role]
   );
 }
 
@@ -174,7 +247,7 @@ export async function reconcile(): Promise<{ contacts: number; matters: number }
     await upsertContactAsEntity(contact);
   }
 
-  // Fetch recently modified matters
+  // Fetch recently modified matters (and their relationships)
   const matters = await clioPaginate<ClioMatter>(
     `/matters?updated_since=${encodeURIComponent(since)}`,
     MATTER_FIELDS
@@ -182,6 +255,7 @@ export async function reconcile(): Promise<{ contacts: number; matters: number }
 
   for (const matter of matters) {
     await upsertMatter(matter);
+    await syncMatterRelationships(matter.id);
   }
 
   await query(

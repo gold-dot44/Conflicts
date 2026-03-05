@@ -1,4 +1,4 @@
-import { query } from "./db";
+import { query, queryAsUser } from "./db";
 import type { SearchResult, SearchRequest, FuzzyWeights, MatterResult, CorporateFamilyMember } from "@/types";
 
 const DEFAULT_WEIGHTS: FuzzyWeights = {
@@ -13,11 +13,16 @@ const DEFAULT_WEIGHTS: FuzzyWeights = {
  * Composite fuzzy search query.
  * Layers Levenshtein, trigram similarity, Soundex, Double Metaphone,
  * and full-text search into a single ranked result set.
+ *
+ * @param upn - If provided, sets app.current_user_upn for RLS ethical wall enforcement
+ * @param suppressions - Common last names whose phonetic weight should be reduced
  */
 export async function compositeSearch(
   request: SearchRequest,
   weights: FuzzyWeights = DEFAULT_WEIGHTS,
-  limit = 50
+  limit = 50,
+  upn?: string,
+  suppressions: string[] = []
 ): Promise<SearchResult[]> {
   const { query: searchTerm, searchType, filters } = request;
 
@@ -35,6 +40,33 @@ export async function compositeSearch(
     params.push(filters.sourceSystem);
     paramIdx++;
   }
+
+  // Build suppression set for phonetic weight reduction.
+  // If the entity's last_name is on the suppression list, reduce
+  // soundex/metaphone contribution by 75% to prevent alert fatigue.
+  const suppressionSet = new Set(suppressions.map((s) => s.toLowerCase()));
+  const hasSuppression = suppressionSet.size > 0;
+
+  // Add the suppression list as an array parameter for the SQL query
+  let suppressionClause = "";
+  let soundexWeight = weights.soundex;
+  let metaphoneWeight = weights.metaphone;
+
+  if (hasSuppression) {
+    // We pass the suppression list as a parameter and use CASE WHEN in SQL
+    params.push(suppressions.map((s) => s.toLowerCase()));
+    suppressionClause = `LOWER(e.last_name) = ANY($${paramIdx})`;
+    paramIdx++;
+  }
+
+  // Build dynamic weight expressions for soundex/metaphone
+  const soundexWeightExpr = hasSuppression
+    ? `CASE WHEN ${suppressionClause} THEN ${soundexWeight * 0.25} ELSE ${soundexWeight} END`
+    : `${soundexWeight}`;
+
+  const metaphoneWeightExpr = hasSuppression
+    ? `CASE WHEN ${suppressionClause} THEN ${metaphoneWeight * 0.25} ELSE ${metaphoneWeight} END`
+    : `${metaphoneWeight}`;
 
   const sql = `
     WITH scored AS (
@@ -106,23 +138,28 @@ export async function compositeSearch(
       (
         levenshtein_score * ${weights.levenshtein} +
         trigram_score * ${weights.trigram} +
-        soundex_score * ${weights.soundex} +
-        metaphone_score * ${weights.metaphone} +
+        soundex_score * ${soundexWeightExpr} +
+        metaphone_score * ${metaphoneWeightExpr} +
         fulltext_score * ${weights.fullText}
       ) AS composite_score
     FROM scored
     WHERE (
       levenshtein_score * ${weights.levenshtein} +
       trigram_score * ${weights.trigram} +
-      soundex_score * ${weights.soundex} +
-      metaphone_score * ${weights.metaphone} +
+      soundex_score * ${soundexWeightExpr} +
+      metaphone_score * ${metaphoneWeightExpr} +
       fulltext_score * ${weights.fullText}
     ) > 0.15
     ORDER BY composite_score DESC
     LIMIT ${limit}
   `;
 
-  const rows = await query<{
+  // Use queryAsUser if UPN provided (activates RLS ethical wall policies)
+  const queryFn = upn
+    ? <T>(text: string, p: unknown[]) => queryAsUser<T>(text, p, upn)
+    : <T>(text: string, p: unknown[]) => query<T>(text, p);
+
+  const rows = await queryFn<{
     entity_id: string;
     full_legal_name: string;
     first_name: string | null;
@@ -141,7 +178,7 @@ export async function compositeSearch(
   const results: SearchResult[] = await Promise.all(
     rows.map(async (row) => {
       const [matters, corporateFamily] = await Promise.all([
-        getEntityMatters(row.entity_id, filters?.matterStatus, filters?.practiceArea),
+        getEntityMatters(row.entity_id, filters?.matterStatus, filters?.practiceArea, upn),
         row.entity_type === "company"
           ? getCorporateFamily(row.entity_id)
           : Promise.resolve([]),
@@ -172,7 +209,8 @@ export async function compositeSearch(
 async function getEntityMatters(
   entityId: string,
   statusFilter?: string,
-  practiceAreaFilter?: string
+  practiceAreaFilter?: string,
+  upn?: string
 ): Promise<MatterResult[]> {
   let sql = `
     SELECT
@@ -203,6 +241,10 @@ async function getEntityMatters(
   }
   sql += " ORDER BY m.open_date DESC";
 
+  // Use RLS-aware query if UPN available
+  if (upn) {
+    return queryAsUser<MatterResult>(sql, params, upn);
+  }
   return query<MatterResult>(sql, params);
 }
 
