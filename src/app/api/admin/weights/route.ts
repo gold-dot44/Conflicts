@@ -4,7 +4,7 @@ import { authOptions, hasPermission } from "@/lib/auth";
 import { query } from "@/lib/db";
 import type { FuzzyWeights } from "@/types";
 
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 /**
  * Admin endpoint for managing fuzzy matching weights.

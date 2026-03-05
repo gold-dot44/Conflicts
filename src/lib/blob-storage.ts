@@ -1,4 +1,4 @@
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 let blobServiceClient: any = null;
 
@@ -32,7 +32,14 @@ export async function uploadBlob(
     blobHTTPHeaders: { blobContentType: contentType },
   });
 
-  return blockBlobClient.url;
+  // Return the blob path, NOT the raw URL — use generateSasUrl for access
+  return `${containerName}/${blobName}`;
+}
+
+/** Get the container/blob path from a stored reference */
+export function getBlobPath(ref: string): { container: string; blob: string } {
+  const firstSlash = ref.indexOf("/");
+  return { container: ref.substring(0, firstSlash), blob: ref.substring(firstSlash + 1) };
 }
 
 /**
@@ -59,18 +66,36 @@ export async function downloadBlob(
 }
 
 /**
- * Generate a SAS URL for temporary access (e.g., for downloading audit PDFs).
+ * Generate a short-lived SAS URL for temporary access (e.g., screening memos).
+ * Default 15-minute expiry to limit exposure of confidential documents.
  */
 export async function generateSasUrl(
   containerName: string,
   blobName: string,
-  expiresInMinutes = 60
+  expiresInMinutes = 15
 ): Promise<string> {
-  const client = getClient();
-  const containerClient = client.getContainerClient(containerName);
-  const blobClient = containerClient.getBlobClient(blobName);
+  if (DEMO_MODE) return `https://demo.blob.core.windows.net/${containerName}/${blobName}?sas=demo`;
 
-  // For SAS generation, the storage account key approach is used
-  // In production, use managed identity with UserDelegationKey
-  return blobClient.url;
+  const { BlobSASPermissions, generateBlobSASQueryParameters, StorageSharedKeyCredential } = require("@azure/storage-blob");
+  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+  if (!connectionString) throw new Error("AZURE_STORAGE_CONNECTION_STRING not set");
+
+  // Parse account name and key from connection string
+  const accountName = connectionString.match(/AccountName=([^;]+)/)?.[1];
+  const accountKey = connectionString.match(/AccountKey=([^;]+)/)?.[1];
+  if (!accountName || !accountKey) throw new Error("Cannot parse storage credentials");
+
+  const credential = new StorageSharedKeyCredential(accountName, accountKey);
+  const startsOn = new Date();
+  const expiresOn = new Date(startsOn.getTime() + expiresInMinutes * 60 * 1000);
+
+  const sasToken = generateBlobSASQueryParameters({
+    containerName,
+    blobName,
+    permissions: BlobSASPermissions.parse("r"),
+    startsOn,
+    expiresOn,
+  }, credential).toString();
+
+  return `https://${accountName}.blob.core.windows.net/${containerName}/${blobName}?${sasToken}`;
 }

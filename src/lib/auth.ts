@@ -2,8 +2,7 @@ import type { NextAuthOptions, Session } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { AppRole } from "@/types";
-
-const DEMO_MODE = process.env.DEMO_MODE === "true";
+import { DEMO_MODE } from "@/lib/env";
 
 // Entra ID group IDs → application roles mapping
 // Configure these in your Azure AD app registration
@@ -70,6 +69,7 @@ export const authOptions: NextAuthOptions = {
         token.upn =
           (profile as Record<string, unknown>).preferred_username as string ??
           (profile as Record<string, unknown>).email as string;
+        token.groupsRefreshedAt = Date.now();
         // Fetch group memberships from Microsoft Graph
         try {
           const res = await fetch(
@@ -87,6 +87,29 @@ export const authOptions: NextAuthOptions = {
           token.role = "readonly";
         }
       }
+
+      // #14: Re-check group membership every hour to catch role changes / terminations
+      const groupsAge = Date.now() - ((token.groupsRefreshedAt as number) ?? 0);
+      if (groupsAge > 60 * 60 * 1000 && token.accessToken) {
+        try {
+          const res = await fetch(
+            "https://graph.microsoft.com/v1.0/me/memberOf",
+            { headers: { Authorization: `Bearer ${token.accessToken}` } }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const groupIds = (data.value ?? [])
+              .filter((m: Record<string, string>) => m["@odata.type"] === "#microsoft.graph.group")
+              .map((g: Record<string, string>) => g.id);
+            token.groups = groupIds;
+            token.role = resolveRole(groupIds);
+            token.groupsRefreshedAt = Date.now();
+          }
+        } catch {
+          // Keep existing groups on refresh failure
+        }
+      }
+
       return token;
     },
     async session({ session, token }: { session: Session; token: JWT }) {
@@ -104,7 +127,10 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/signin",
   },
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    maxAge: 8 * 60 * 60, // #13: 8 hours — one business day
+  },
 };
 
 export function hasPermission(
