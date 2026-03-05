@@ -159,6 +159,25 @@ export function getAllMatters(): DemoMatter[] {
   return matters;
 }
 
+export function getMatterById(id: string): DemoMatter | undefined {
+  return matters.find((m) => m.matterId === id);
+}
+
+export function addPartyToMatter(
+  matterId: string,
+  entityId: string,
+  role: EntityMatterRole
+): boolean {
+  const matter = matters.find((m) => m.matterId === matterId);
+  if (!matter) return false;
+  const entity = entities.find((e) => e.entityId === entityId);
+  if (!entity) return false;
+  // Don't add duplicate
+  if (matter.parties.some((p) => p.entityId === entityId)) return false;
+  matter.parties.push({ entityId, role });
+  return true;
+}
+
 export function createMatter(data: {
   matterName: string;
   matterNumber?: string;
