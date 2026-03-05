@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setClioTokens } from "@/lib/clio/client";
+import { query } from "@/lib/db";
+
+const DEMO_MODE = process.env.DEMO_MODE === "true";
 
 /**
  * OAuth 2.0 callback for Clio authorization.
- * Exchanges the authorization code for access + refresh tokens.
+ * Exchanges the authorization code for access + refresh tokens and
+ * persists them to the database (or in-memory for demo mode).
  */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -44,16 +48,25 @@ export async function GET(request: NextRequest) {
 
     const data = await res.json();
 
-    // Store tokens in memory (in production, use encrypted DB storage)
-    setClioTokens({
+    // Persist tokens to DB (survives restarts, scaling, cold starts)
+    await setClioTokens({
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
       expiresAt: Date.now() + data.expires_in * 1000,
     });
 
-    // Store connection state in a global for the status endpoint
-    (globalThis as Record<string, unknown>).__clioConnected = true;
-    (globalThis as Record<string, unknown>).__clioConnectedAt = new Date().toISOString();
+    // Record connection timestamp
+    if (!DEMO_MODE) {
+      await query(
+        `INSERT INTO app_config (config_key, config_value, updated_by)
+         VALUES ('clio_connected_at', $1, 'system')
+         ON CONFLICT (config_key) DO UPDATE SET config_value = $1, updated_at = NOW()`,
+        [JSON.stringify(new Date().toISOString())]
+      );
+    } else {
+      (globalThis as Record<string, unknown>).__clioConnected = true;
+      (globalThis as Record<string, unknown>).__clioConnectedAt = new Date().toISOString();
+    }
 
     return NextResponse.redirect(
       new URL("/admin?clio_success=true", request.url)

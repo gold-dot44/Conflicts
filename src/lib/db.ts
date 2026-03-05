@@ -51,4 +51,32 @@ export async function withTransaction<T>(
   }
 }
 
-export default { query, queryOne, withTransaction };
+/**
+ * Execute a query with RLS context by setting the PostgreSQL session variable
+ * `app.current_user_upn` before running the query. This activates the
+ * ethical wall RLS policies that check current_setting('app.current_user_upn').
+ *
+ * Uses a transaction so SET LOCAL scopes correctly.
+ */
+export async function queryAsUser<T = Record<string, unknown>>(
+  text: string,
+  params: unknown[],
+  upn: string
+): Promise<T[]> {
+  if (DEMO_MODE) return [];
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SET LOCAL app.current_user_upn = $1", [upn]);
+    const result = await client.query(text, params);
+    await client.query("COMMIT");
+    return result.rows as T[];
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+export default { query, queryOne, withTransaction, queryAsUser };

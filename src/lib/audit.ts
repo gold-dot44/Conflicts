@@ -31,9 +31,9 @@ export async function logSearch(entry: AuditEntry): Promise<string> {
 }
 
 /**
- * Record a disposition decision on an audit log entry.
- * This is an INSERT of a new row referencing the original search,
- * preserving append-only semantics.
+ * Record a disposition decision as a NEW row referencing the original search.
+ * The audit_log table is append-only (INSERT only, no UPDATE/DELETE),
+ * so dispositions are stored as separate rows linked via parent_search_id.
  */
 export async function recordDisposition(params: {
   auditLogId: string;
@@ -43,17 +43,18 @@ export async function recordDisposition(params: {
   entityId?: string;
   matterId?: string;
   relatedDocuments?: string[];
-}): Promise<void> {
-  await query(
-    `UPDATE audit_log SET
-       disposition = $2,
-       disposition_by = $3,
-       disposition_rationale = $4,
-       disposition_timestamp = NOW(),
-       entity_id = $5,
-       matter_id = $6,
-       related_documents = $7
-     WHERE id = $1 AND disposition IS NULL`,
+}): Promise<string> {
+  const [row] = await query<{ id: string }>(
+    `INSERT INTO audit_log
+       (parent_search_id, searched_by, search_terms, disposition,
+        disposition_by, disposition_rationale, disposition_timestamp,
+        entity_id, matter_id, related_documents)
+     SELECT
+       $1, searched_by, search_terms, $2,
+       $3, $4, NOW(),
+       $5, $6, $7
+     FROM audit_log WHERE id = $1
+     RETURNING id`,
     [
       params.auditLogId,
       params.disposition,
@@ -64,10 +65,12 @@ export async function recordDisposition(params: {
       params.relatedDocuments ?? [],
     ]
   );
+  return row.id;
 }
 
 /**
  * Retrieve audit trail for a matter or entity.
+ * Joins search rows with their disposition rows (linked via parent_search_id).
  */
 export async function getAuditTrail(params: {
   matterId?: string;
@@ -76,27 +79,41 @@ export async function getAuditTrail(params: {
   limit?: number;
   offset?: number;
 }): Promise<unknown[]> {
-  let sql = `SELECT * FROM audit_log WHERE 1=1`;
+  let sql = `
+    SELECT
+      s.*,
+      d.id AS disposition_id,
+      d.disposition,
+      d.disposition_by,
+      d.disposition_rationale,
+      d.disposition_timestamp,
+      d.entity_id AS disposition_entity_id,
+      d.matter_id AS disposition_matter_id,
+      d.related_documents
+    FROM audit_log s
+    LEFT JOIN audit_log d ON d.parent_search_id = s.id
+    WHERE s.parent_search_id IS NULL
+  `;
   const values: unknown[] = [];
   let idx = 1;
 
   if (params.matterId) {
-    sql += ` AND matter_id = $${idx}`;
+    sql += ` AND (s.matter_id = $${idx} OR d.matter_id = $${idx})`;
     values.push(params.matterId);
     idx++;
   }
   if (params.entityId) {
-    sql += ` AND entity_id = $${idx}`;
+    sql += ` AND (s.entity_id = $${idx} OR d.entity_id = $${idx})`;
     values.push(params.entityId);
     idx++;
   }
   if (params.searchedBy) {
-    sql += ` AND searched_by = $${idx}`;
+    sql += ` AND s.searched_by = $${idx}`;
     values.push(params.searchedBy);
     idx++;
   }
 
-  sql += ` ORDER BY search_timestamp DESC LIMIT $${idx} OFFSET $${idx + 1}`;
+  sql += ` ORDER BY s.search_timestamp DESC LIMIT $${idx} OFFSET $${idx + 1}`;
   values.push(params.limit ?? 50, params.offset ?? 0);
 
   return query(sql, values);

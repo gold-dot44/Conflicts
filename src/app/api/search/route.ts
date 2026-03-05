@@ -4,9 +4,38 @@ import { authOptions, hasPermission } from "@/lib/auth";
 import { compositeSearch, DEFAULT_WEIGHTS } from "@/lib/fuzzy-search";
 import { logSearch } from "@/lib/audit";
 import { searchEntities } from "@/lib/demo-data";
-import type { SearchRequest } from "@/types";
+import { query } from "@/lib/db";
+import type { SearchRequest, FuzzyWeights } from "@/types";
 
 const DEMO_MODE = process.env.DEMO_MODE === "true";
+
+/**
+ * Fetch admin-configured weights and suppressions from app_config.
+ * Falls back to DEFAULT_WEIGHTS if not configured.
+ */
+async function getSearchConfig(): Promise<{
+  weights: FuzzyWeights;
+  suppressions: string[];
+}> {
+  const rows = await query<{ config_key: string; config_value: string }>(
+    `SELECT config_key, config_value FROM app_config
+     WHERE config_key IN ('fuzzy_weights', 'common_name_suppressions')`
+  );
+
+  let weights = DEFAULT_WEIGHTS;
+  let suppressions: string[] = [];
+
+  for (const row of rows) {
+    if (row.config_key === "fuzzy_weights") {
+      try { weights = JSON.parse(row.config_value); } catch { /* use default */ }
+    }
+    if (row.config_key === "common_name_suppressions") {
+      try { suppressions = JSON.parse(row.config_value); } catch { /* use default */ }
+    }
+  }
+
+  return { weights, suppressions };
+}
 
 export async function POST(request: NextRequest) {
   if (DEMO_MODE) {
@@ -34,14 +63,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const results = await compositeSearch(body, DEFAULT_WEIGHTS);
+  // Fetch admin-configured weights and suppressions from DB
+  const { weights, suppressions } = await getSearchConfig();
 
-  // Log to immutable audit trail
+  // Use queryAsUser to activate RLS ethical wall policies
+  const results = await compositeSearch(body, weights, 50, user.upn, suppressions);
+
+  // Log to immutable audit trail (append-only INSERT)
   const auditLogId = await logSearch({
     searchedBy: user.upn,
     searchTerms: body.query,
     algorithmsApplied: {
-      weights: DEFAULT_WEIGHTS,
+      weights,
       extensions: ["pg_trgm", "fuzzystrmatch"],
     },
     resultsSnapshot: results,
