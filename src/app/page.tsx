@@ -59,6 +59,18 @@ export default function Home() {
           color="purple"
         />
         <DashboardCard
+          title="Add Entity"
+          description="Add a new person or company to the conflicts database."
+          href="/entities/new"
+          color="teal"
+        />
+        <DashboardCard
+          title="Add Matter"
+          description="Create a new matter and link it to an existing entity."
+          href="/matters/new"
+          color="orange"
+        />
+        <DashboardCard
           title="Admin Settings"
           description="Configure fuzzy matching weights, thresholds, and common-name suppressions."
           href="/admin"
@@ -85,6 +97,8 @@ function DashboardCard({
     green: "border-l-green-500 hover:bg-green-50",
     red: "border-l-red-500 hover:bg-red-50",
     purple: "border-l-purple-500 hover:bg-purple-50",
+    teal: "border-l-teal-500 hover:bg-teal-50",
+    orange: "border-l-orange-500 hover:bg-orange-50",
     gray: "border-l-gray-500 hover:bg-gray-50",
   };
 
