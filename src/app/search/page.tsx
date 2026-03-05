@@ -318,6 +318,11 @@ function ResultCard({
                         </span>
                       )}
                     </div>
+                    {matter.staff && matter.staff.length > 0 && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        Staff: {matter.staff.map((s) => `${s.userName} (${s.role.replace(/_/g, " ")})`).join(", ")}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

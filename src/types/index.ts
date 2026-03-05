@@ -44,6 +44,7 @@ export interface MatterResult {
   practiceArea: string | null;
   openDate: string | null;
   closeDate: string | null;
+  staff: Array<{ userName: string; role: string }>;
 }
 
 export interface CorporateFamilyMember {
@@ -276,6 +277,56 @@ export interface AppRole {
   name: "analyst" | "reviewer" | "admin" | "readonly";
   permissions: string[];
 }
+
+// --- Matter Staff types ---
+
+export type StaffRole =
+  | "responsible_attorney"
+  | "originating_attorney"
+  | "associate"
+  | "paralegal"
+  | "legal_secretary"
+  | "contract_attorney"
+  | "of_counsel"
+  | "other";
+
+export interface MatterStaffMember {
+  id: string;
+  matterId: string;
+  userUpn: string;
+  userName: string;
+  role: StaffRole;
+  startDate: string | null;
+  endDate: string | null;
+  sourceSystem: string;
+  createdAt: string;
+}
+
+export interface StaffLookupResult {
+  matterId: string;
+  matterName: string;
+  matterNumber: string | null;
+  matterStatus: MatterStatus;
+  practiceArea: string | null;
+  staffRole: StaffRole;
+  startDate: string | null;
+  endDate: string | null;
+  parties: Array<{
+    entityName: string;
+    role: EntityMatterRole;
+  }>;
+}
+
+export const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
+  responsible_attorney: "Responsible Attorney",
+  originating_attorney: "Originating Attorney",
+  associate: "Associate",
+  paralegal: "Paralegal",
+  legal_secretary: "Legal Secretary",
+  contract_attorney: "Contract Attorney",
+  of_counsel: "Of Counsel",
+  other: "Other",
+};
 
 export const ROLE_PERMISSIONS: Record<AppRole["name"], string[]> = {
   readonly: ["view_audit"],
