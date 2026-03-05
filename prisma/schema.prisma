@@ -85,6 +85,7 @@ model Matter {
 
   entityRoles         EntityMatterRole_[] @relation("matter_roles")
   ethicalWalls        EthicalWall[]
+  staff               MatterStaff[]
 
   @@map("matters")
 }
@@ -136,6 +137,23 @@ model AuditLog {
   entityId              String?              @map("entity_id") @db.Uuid
 
   @@map("audit_log")
+}
+
+model MatterStaff {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matterId     String    @map("matter_id") @db.Uuid
+  userUpn      String    @map("user_upn")
+  userName     String    @map("user_name")
+  role         String    @default("other")
+  startDate    DateTime? @map("start_date") @db.Date
+  endDate      DateTime? @map("end_date") @db.Date
+  sourceSystem String    @map("source_system") @default("manual")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  matter       Matter    @relation(fields: [matterId], references: [id])
+
+  @@unique([matterId, userUpn, role])
+  @@map("matter_staff")
 }
 
 model EthicalWall {

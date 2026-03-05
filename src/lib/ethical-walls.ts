@@ -20,6 +20,7 @@ export interface EthicalWall {
   createdAt: string;
   memoUrl: string | null;
   isActive: boolean;
+  existingStaffRoles?: string[];
 }
 
 /**
@@ -93,7 +94,25 @@ export async function createEthicalWall(params: {
     [memoRef, wall.id]
   );
 
-  return { ...wall, memoUrl: memoRef, matterName: matter?.matter_name ?? "" };
+  // 7. Check if screened attorney has existing staff associations with the matter
+  const existingStaff = await query<{ id: string; role: string }>(
+    `SELECT id, role FROM matter_staff WHERE user_upn = $1 AND matter_id = $2`,
+    [params.screenedAttorneyUpn, params.matterId]
+  );
+  if (existingStaff.length > 0) {
+    const roles = existingStaff.map((s) => s.role).join(", ");
+    console.error(
+      `WARNING: Screened attorney ${params.screenedAttorneyUpn} has existing staff associations ` +
+        `with matter ${params.matterId} (roles: ${roles}). Review and remove manually if needed.`
+    );
+  }
+
+  return {
+    ...wall,
+    memoUrl: memoRef,
+    matterName: matter?.matter_name ?? "",
+    existingStaffRoles: existingStaff.map((s) => s.role),
+  };
 }
 
 /**

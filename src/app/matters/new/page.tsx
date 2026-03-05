@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import type { SearchResult, EntityMatterRole, MatterStatus } from "@/types";
+import type { SearchResult, EntityMatterRole, MatterStatus, StaffRole, MatterStaffMember } from "@/types";
+import { STAFF_ROLE_LABELS } from "@/types";
 
 interface PartyEntry {
   entityId: string;
@@ -36,6 +37,18 @@ export default function NewMatterPage() {
     { entityId: "", entityName: "", role: "client", isNew: false },
   ]);
   const [conflictResults, setConflictResults] = useState<Record<string, SearchResult[]>>({});
+  const [staffEntries, setStaffEntries] = useState<Array<{
+    id?: string;
+    userName: string;
+    userUpn: string;
+    role: StaffRole;
+    startDate: string;
+  }>>([]);
+  const [staffName, setStaffName] = useState("");
+  const [staffUpn, setStaffUpn] = useState("");
+  const [staffRole, setStaffRole] = useState<StaffRole>("associate");
+  const [staffStartDate, setStaffStartDate] = useState("");
+  const [staffError, setStaffError] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -165,7 +178,29 @@ export default function NewMatterPage() {
         return;
       }
 
-      setSuccess(`Created matter "${matterName}" with ${resolvedParties.length} parties`);
+      // Add staff members to the created matter
+      const matterId = data.matter?.matterId ?? data.matter?.id;
+      if (matterId && staffEntries.length > 0) {
+        for (const staff of staffEntries) {
+          const staffRes = await fetch("/api/matter-staff", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              matterId,
+              userUpn: staff.userUpn,
+              userName: staff.userName,
+              role: staff.role,
+              startDate: staff.startDate || undefined,
+            }),
+          });
+          if (staffRes.status === 409) {
+            const staffData = await staffRes.json();
+            setStaffError(staffData.error || "Ethical wall conflict");
+          }
+        }
+      }
+
+      setSuccess(`Created matter "${matterName}" with ${resolvedParties.length} parties and ${staffEntries.length} staff`);
       // Refresh entities list
       fetch("/api/entities")
         .then((r) => r.json())
@@ -307,6 +342,93 @@ export default function NewMatterPage() {
               + Other Party
             </button>
           </div>
+        </section>
+
+        {/* Staff */}
+        <section className="bg-white rounded-lg shadow-sm border p-5 space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">Staff</h2>
+          <p className="text-xs text-gray-500">
+            Assign firm personnel to this matter. Staff assignments can also be added after creation.
+          </p>
+
+          {staffEntries.map((entry, i) => (
+            <div key={i} className="flex items-center gap-3 border border-gray-200 rounded-md p-3 border-l-4 border-l-purple-400">
+              <div className="flex-1">
+                <span className="text-sm font-medium">{entry.userName}</span>
+                <span className="text-xs text-gray-400 ml-2">{entry.userUpn}</span>
+              </div>
+              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                {STAFF_ROLE_LABELS[entry.role]}
+              </span>
+              {entry.startDate && (
+                <span className="text-xs text-gray-400">{entry.startDate}</span>
+              )}
+              <button
+                type="button"
+                onClick={() => setStaffEntries(staffEntries.filter((_, j) => j !== i))}
+                className="text-gray-400 hover:text-red-500 text-sm"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              type="text"
+              value={staffName}
+              onChange={(e) => setStaffName(e.target.value)}
+              placeholder="Person name"
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            />
+            <input
+              type="email"
+              value={staffUpn}
+              onChange={(e) => setStaffUpn(e.target.value)}
+              placeholder="Email (UPN)"
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <select
+              value={staffRole}
+              onChange={(e) => setStaffRole(e.target.value as StaffRole)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+            >
+              {Object.entries(STAFF_ROLE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={staffStartDate}
+              onChange={(e) => setStaffStartDate(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (!staffName.trim() || !staffUpn.trim()) {
+                  setStaffError("Name and email are required");
+                  return;
+                }
+                setStaffEntries([
+                  ...staffEntries,
+                  { userName: staffName.trim(), userUpn: staffUpn.trim(), role: staffRole, startDate: staffStartDate },
+                ]);
+                setStaffName("");
+                setStaffUpn("");
+                setStaffStartDate("");
+                setStaffError("");
+              }}
+              className="px-3 py-2 bg-purple-50 text-purple-700 rounded-md text-sm hover:bg-purple-100 font-medium"
+            >
+              + Add Staff
+            </button>
+          </div>
+          {staffError && (
+            <p className="text-xs text-red-600">{staffError}</p>
+          )}
         </section>
 
         {error && (

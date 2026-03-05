@@ -2,7 +2,8 @@ import type {
   SearchResult, EntityMatterRole, ConflictCheckRequest,
   CheckRequestSubject, CheckRequestType, CheckRequestStatus,
   SubjectRole, ConflictDisposition, CrossReference, MatchReason,
-  EnrichedSearchResult, EntityType,
+  EnrichedSearchResult, EntityType, MatterStaffMember, StaffRole,
+  StaffLookupResult,
   DataShape, HistoricalImportDefaults, HistoricalColumnMapping,
   HistoricalImportPreview, HistoricalImportResult,
   HistoricalImportProblemRow, MatterStatus,
@@ -189,9 +190,21 @@ const SEED_MATTERS: DemoMatter[] = [
   },
 ];
 
+const SEED_STAFF: MatterStaffMember[] = [
+  { id: "ms-1", matterId: "m-1", userUpn: "sarah.johnson@firm.com", userName: "Sarah Johnson", role: "responsible_attorney", startDate: "2024-03-15", endDate: null, sourceSystem: "manual", createdAt: "2024-03-15T10:00:00Z" },
+  { id: "ms-2", matterId: "m-1", userUpn: "michael.chen@firm.com", userName: "Michael Chen", role: "associate", startDate: "2024-03-20", endDate: null, sourceSystem: "manual", createdAt: "2024-03-20T09:00:00Z" },
+  { id: "ms-3", matterId: "m-2", userUpn: "michael.chen@firm.com", userName: "Michael Chen", role: "responsible_attorney", startDate: "2023-06-01", endDate: "2023-12-15", sourceSystem: "manual", createdAt: "2023-06-01T10:00:00Z" },
+  { id: "ms-4", matterId: "m-3", userUpn: "lisa.park@firm.com", userName: "Lisa Park", role: "responsible_attorney", startDate: "2024-01-10", endDate: null, sourceSystem: "manual", createdAt: "2024-01-10T10:00:00Z" },
+  { id: "ms-5", matterId: "m-4", userUpn: "robert.kim@firm.com", userName: "Robert Kim", role: "responsible_attorney", startDate: "2023-02-20", endDate: "2024-01-30", sourceSystem: "manual", createdAt: "2023-02-20T10:00:00Z" },
+  { id: "ms-6", matterId: "m-4", userUpn: "emily.watson@firm.com", userName: "Emily Watson", role: "paralegal", startDate: "2023-03-01", endDate: "2024-01-30", sourceSystem: "manual", createdAt: "2023-03-01T10:00:00Z" },
+  { id: "ms-7", matterId: "m-5", userUpn: "lisa.park@firm.com", userName: "Lisa Park", role: "responsible_attorney", startDate: "2024-02-01", endDate: null, sourceSystem: "manual", createdAt: "2024-02-01T10:00:00Z" },
+  { id: "ms-8", matterId: "m-5", userUpn: "david.martinez@firm.com", userName: "David Martinez", role: "associate", startDate: "2024-02-15", endDate: null, sourceSystem: "manual", createdAt: "2024-02-15T10:00:00Z" },
+];
+
 // Mutable in-memory stores
 const entities: SearchResult[] = [...SEED_ENTITIES];
 const matters: DemoMatter[] = [...SEED_MATTERS];
+const staffMembers: MatterStaffMember[] = [...SEED_STAFF];
 
 let matterCounter = 100;
 let entityCounter = 100;
@@ -464,6 +477,9 @@ function mattersForEntity(entityId: string): SearchResult["matters"] {
         practiceArea: m.practiceArea,
         openDate: m.openDate,
         closeDate: m.closeDate,
+        staff: staffMembers
+          .filter((s) => s.matterId === m.matterId)
+          .map((s) => ({ userName: s.userName, role: s.role })),
       };
     });
 }
@@ -1206,6 +1222,101 @@ export function executeHistoricalImport(
     skippedRows,
     sourceLabel,
   };
+}
+
+// --- Matter Staff operations ---
+
+export function getStaffForMatter(matterId: string): MatterStaffMember[] {
+  return staffMembers
+    .filter((s) => s.matterId === matterId)
+    .sort((a, b) => a.role.localeCompare(b.role) || a.userName.localeCompare(b.userName));
+}
+
+export function addStaffToMatter(data: {
+  matterId: string;
+  userUpn: string;
+  userName: string;
+  role: StaffRole;
+  startDate?: string;
+}): MatterStaffMember | null {
+  // Check for ethical wall conflict
+  const demoWalls = [
+    { upn: "david.martinez@firm.com", matterId: "m-1", active: true },
+    { upn: "emily.watson@firm.com", matterId: "m-3", active: true },
+  ];
+  const blocked = demoWalls.find(
+    (w) => w.upn === data.userUpn && w.matterId === data.matterId && w.active
+  );
+  if (blocked) return null; // ethical wall conflict
+
+  // Check for duplicate
+  const exists = staffMembers.find(
+    (s) => s.matterId === data.matterId && s.userUpn === data.userUpn && s.role === data.role
+  );
+  if (exists) return exists;
+
+  const member: MatterStaffMember = {
+    id: `ms-${Date.now()}`,
+    matterId: data.matterId,
+    userUpn: data.userUpn,
+    userName: data.userName,
+    role: data.role,
+    startDate: data.startDate ?? null,
+    endDate: null,
+    sourceSystem: "manual",
+    createdAt: new Date().toISOString(),
+  };
+  staffMembers.push(member);
+  return member;
+}
+
+export function removeStaffFromMatter(id: string): boolean {
+  const idx = staffMembers.findIndex((s) => s.id === id);
+  if (idx === -1) return false;
+  staffMembers.splice(idx, 1);
+  return true;
+}
+
+export function getMattersForStaff(upn: string): StaffLookupResult[] {
+  const staffEntries = staffMembers.filter((s) => s.userUpn === upn);
+  return staffEntries.map((s) => {
+    const matter = matters.find((m) => m.matterId === s.matterId);
+    const parties = matter
+      ? matter.parties.map((p) => {
+          const entity = entities.find((e) => e.entityId === p.entityId);
+          return {
+            entityName: entity?.fullLegalName ?? "Unknown",
+            role: p.role,
+          };
+        })
+      : [];
+    return {
+      matterId: s.matterId,
+      matterName: matter?.matterName ?? "Unknown",
+      matterNumber: matter?.matterNumber ?? null,
+      matterStatus: (matter?.status ?? "open") as MatterStatus,
+      practiceArea: matter?.practiceArea ?? null,
+      staffRole: s.role as StaffRole,
+      startDate: s.startDate,
+      endDate: s.endDate,
+      parties,
+    };
+  });
+}
+
+export function getAllStaffUpns(): Array<{ upn: string; name: string }> {
+  const seen = new Map<string, string>();
+  for (const s of staffMembers) {
+    if (!seen.has(s.userUpn)) {
+      seen.set(s.userUpn, s.userName);
+    }
+  }
+  return Array.from(seen.entries()).map(([upn, name]) => ({ upn, name }));
+}
+
+export function getStaffNameByUpn(upn: string): string | null {
+  const member = staffMembers.find((s) => s.userUpn === upn);
+  return member?.userName ?? null;
 }
 
 /** Demo stats for the reviewer dashboard */

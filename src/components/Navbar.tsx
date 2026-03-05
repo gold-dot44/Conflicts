@@ -49,6 +49,12 @@ export function Navbar() {
                   Audit Trail
                 </Link>
                 <Link
+                  href="/staff-lookup"
+                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
+                >
+                  Staff Lookup
+                </Link>
+                <Link
                   href="/admin"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >

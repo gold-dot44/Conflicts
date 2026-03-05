@@ -242,10 +242,43 @@ async function getEntityMatters(
   sql += " ORDER BY m.open_date DESC";
 
   // Use RLS-aware query if UPN available
-  if (upn) {
-    return queryAsUser<MatterResult>(sql, params, upn);
-  }
-  return query<MatterResult>(sql, params);
+  const queryFn = upn
+    ? <T>(text: string, p: unknown[]) => queryAsUser<T>(text, p, upn)
+    : <T>(text: string, p: unknown[]) => query<T>(text, p);
+
+  const rows = await queryFn<{
+    matter_id: string;
+    matter_name: string;
+    matter_number: string | null;
+    status: string;
+    role: string;
+    responsible_attorney: string | null;
+    practice_area: string | null;
+    open_date: string | null;
+    close_date: string | null;
+  }>(sql, params);
+
+  // Fetch staff for each matter
+  return Promise.all(
+    rows.map(async (row) => {
+      const staffRows = await query<{ user_name: string; role: string }>(
+        `SELECT user_name, role FROM matter_staff WHERE matter_id = $1 ORDER BY role, user_name`,
+        [row.matter_id]
+      );
+      return {
+        matterId: row.matter_id,
+        matterName: row.matter_name,
+        matterNumber: row.matter_number,
+        status: row.status as MatterResult["status"],
+        role: row.role as MatterResult["role"],
+        responsibleAttorney: row.responsible_attorney,
+        practiceArea: row.practice_area,
+        openDate: row.open_date,
+        closeDate: row.close_date,
+        staff: staffRows.map((s) => ({ userName: s.user_name, role: s.role })),
+      };
+    })
+  );
 }
 
 /**
