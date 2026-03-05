@@ -1,10 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import type { EntityMatterRole } from "@/types";
+
+interface MatterOption {
+  matterId: string;
+  matterName: string;
+  matterNumber: string | null;
+  status: string;
+}
+
+const ROLE_LABELS: Record<EntityMatterRole, string> = {
+  client: "Client",
+  adverse_party: "Adverse Party",
+  co_party: "Co-Party",
+  witness: "Witness",
+  expert: "Expert",
+  insurer: "Insurer",
+  opposing_counsel: "Opposing Counsel",
+  judge: "Judge",
+  other: "Other",
+};
 
 export default function NewEntityPage() {
   const router = useRouter();
+  const [matters, setMatters] = useState<MatterOption[]>([]);
   const [form, setForm] = useState({
     fullLegalName: "",
     firstName: "",
@@ -12,9 +33,18 @@ export default function NewEntityPage() {
     entityType: "person" as "person" | "company",
     aliases: [""],
   });
+  const [linkMatterId, setLinkMatterId] = useState("");
+  const [linkRole, setLinkRole] = useState<EntityMatterRole>("client");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    fetch("/api/matters")
+      .then((r) => r.json())
+      .then((data) => setMatters(data.matters ?? []))
+      .catch(() => {});
+  }, []);
 
   function updateAlias(index: number, value: string) {
     const updated = [...form.aliases];
@@ -37,6 +67,7 @@ export default function NewEntityPage() {
     setSaving(true);
 
     try {
+      // Create entity
       const res = await fetch("/api/entities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,8 +81,36 @@ export default function NewEntityPage() {
         setError(data.error || "Failed to create entity");
         return;
       }
-      setSuccess(`Created "${data.entity.fullLegalName}" (${data.entity.entityId})`);
+
+      const entityId = data.entity.entityId;
+      const entityName = data.entity.fullLegalName;
+
+      // Link to matter if selected
+      if (linkMatterId) {
+        const linkRes = await fetch("/api/matters/add-party", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            matterId: linkMatterId,
+            entityId,
+            role: linkRole,
+          }),
+        });
+        if (linkRes.ok) {
+          const matter = matters.find((m) => m.matterId === linkMatterId);
+          setSuccess(
+            `Created "${entityName}" and linked as ${ROLE_LABELS[linkRole]} on "${matter?.matterName}"`
+          );
+        } else {
+          setSuccess(`Created "${entityName}" but failed to link to matter`);
+        }
+      } else {
+        setSuccess(`Created "${entityName}" (${entityId})`);
+      }
+
       setForm({ fullLegalName: "", firstName: "", lastName: "", entityType: "person", aliases: [""] });
+      setLinkMatterId("");
+      setLinkRole("client");
     } catch {
       setError("Network error");
     } finally {
@@ -61,7 +120,10 @@ export default function NewEntityPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Add New Entity</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">Add New Entity</h1>
+      <p className="text-sm text-gray-500 mb-6">
+        Add a person or company to the conflicts database. Optionally link to an existing matter.
+      </p>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
@@ -153,6 +215,51 @@ export default function NewEntityPage() {
             + Add alias
           </button>
         </div>
+
+        {/* Link to existing matter */}
+        <section className="border border-gray-200 rounded-md p-4 space-y-3 bg-gray-50">
+          <h3 className="text-sm font-semibold text-gray-700">
+            Link to Existing Matter
+            <span className="font-normal text-gray-500 ml-1">(optional)</span>
+          </h3>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Matter
+            </label>
+            <select
+              value={linkMatterId}
+              onChange={(e) => setLinkMatterId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+            >
+              <option value="">None — do not link to a matter</option>
+              {matters.map((m) => (
+                <option key={m.matterId} value={m.matterId}>
+                  {m.matterName}
+                  {m.matterNumber ? ` (${m.matterNumber})` : ""}
+                  {m.status !== "open" ? ` [${m.status}]` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {linkMatterId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Role on this matter
+              </label>
+              <select
+                value={linkRole}
+                onChange={(e) => setLinkRole(e.target.value as EntityMatterRole)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+              >
+                {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </section>
 
         {error && (
           <div className="p-3 bg-red-50 text-red-700 rounded-md text-sm">{error}</div>
