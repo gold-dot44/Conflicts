@@ -3,6 +3,9 @@ import type {
   CheckRequestSubject, CheckRequestType, CheckRequestStatus,
   SubjectRole, ConflictDisposition, CrossReference, MatchReason,
   EnrichedSearchResult, EntityType,
+  DataShape, HistoricalImportDefaults, HistoricalColumnMapping,
+  HistoricalImportPreview, HistoricalImportResult,
+  HistoricalImportProblemRow, MatterStatus,
 } from "@/types";
 
 /** Standalone matter record with all linked parties */
@@ -802,6 +805,407 @@ export function getEnrichedSubjectResults(
 ): EnrichedSearchResult[] {
   const searchType = subjectType === "unknown" ? "all" : subjectType;
   return searchEntitiesEnriched(subjectName, searchType);
+}
+
+// --- Historical Matter Import ---
+
+/** Corporate suffix patterns for auto-detecting entity type */
+const CORPORATE_SUFFIXES = /\b(inc\.?|llc|corp\.?|corporation|ltd\.?|limited|lp|llp|company|co\.?|association|foundation|trust|group|holdings|partners|partnership)\b/i;
+
+export function detectEntityType(name: string): EntityType {
+  return CORPORATE_SUFFIXES.test(name) ? "company" : "person";
+}
+
+/** Split multi-value cells on semicolons or " and " */
+export function splitMultiValue(value: string): string[] {
+  return value
+    .split(/[;]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/** Column synonym map for auto-detecting headers */
+const COLUMN_SYNONYMS: Record<string, string[]> = {
+  matterName: ["matter name", "matter", "case name", "case", "caption", "description", "matter description", "case caption", "file name", "re:"],
+  matterNumber: ["matter #", "matter number", "file #", "file number", "case number", "case #", "docket", "our ref", "reference"],
+  clientName: ["client", "client name", "our client", "petitioner", "applicant"],
+  adversePartyName: ["adverse", "adverse party", "opposing party", "defendant", "respondent", "opposing side", "other side", "against", "vs"],
+  coPartyName: ["co-party", "co party", "co-defendant", "co-plaintiff", "co defendant"],
+  witnessName: ["witness", "witness name"],
+  expertName: ["expert", "expert name"],
+  insurerName: ["insurer", "insurance", "carrier"],
+  opposingCounselName: ["opposing counsel", "opp counsel", "opposing attorney"],
+  otherPartyName: ["other party", "other"],
+  status: ["status", "matter status", "case status", "open/closed", "active"],
+  responsibleAttorney: ["attorney", "responsible attorney", "lead attorney", "partner", "originating attorney", "billing attorney", "responsible lawyer", "atty"],
+  practiceArea: ["practice area", "area of law", "type", "matter type", "case type", "category", "department"],
+  openDate: ["open date", "date opened", "opened", "start date", "intake date", "date retained"],
+  closeDate: ["close date", "date closed", "closed", "end date", "disposition date"],
+};
+
+export function autoDetectMappings(headers: string[]): HistoricalColumnMapping[] {
+  const mappings: HistoricalColumnMapping[] = [];
+  for (const header of headers) {
+    const h = header.toLowerCase().trim();
+    let matched = false;
+    for (const [targetField, synonyms] of Object.entries(COLUMN_SYNONYMS)) {
+      if (synonyms.some((s) => s === h || h.includes(s))) {
+        mappings.push({ sourceColumn: header, targetField });
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      mappings.push({ sourceColumn: header, targetField: "skip" });
+    }
+  }
+  return mappings;
+}
+
+/** Detect data shape from headers and sample rows */
+export function detectDataShape(
+  headers: string[],
+  sampleRows: Record<string, string>[]
+): DataShape {
+  const h = headers.map((h) => h.toLowerCase());
+  // If columns like "Client" and "Adverse Party" exist → one row per matter
+  const hasClientCol = h.some((x) => x.includes("client"));
+  const hasAdverseCol = h.some((x) => x.includes("adverse") || x.includes("defendant") || x.includes("respondent"));
+  if (hasClientCol && hasAdverseCol) return "one_per_matter";
+
+  // If there's a "Party Role" or "Role" column and multiple rows share the same matter → one per party
+  const hasRoleCol = h.some((x) => x === "role" || x === "party role" || x.includes("party role"));
+  if (hasRoleCol && sampleRows.length >= 2) {
+    const matterCol = h.find((x) => x.includes("matter") || x.includes("case"));
+    if (matterCol) {
+      const matterNames = sampleRows.map((r) => r[matterCol]);
+      const uniqueMatters = new Set(matterNames);
+      if (uniqueMatters.size < matterNames.length) return "one_per_party";
+    }
+  }
+
+  return "one_per_matter";
+}
+
+/** Try to parse a date string in various formats */
+function tryParseDate(value: string): string | null {
+  if (!value || !value.trim()) return null;
+  const v = value.trim();
+  // Try ISO
+  const isoMatch = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+  // Try M/D/YYYY or M-D-YYYY
+  const usMatch = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (usMatch) return `${usMatch[3]}-${usMatch[1].padStart(2, "0")}-${usMatch[2].padStart(2, "0")}`;
+  // Try YYYY alone
+  const yearMatch = v.match(/^(\d{4})$/);
+  if (yearMatch) return `${yearMatch[1]}-01-01`;
+  return null;
+}
+
+function parseStatus(value: string | undefined, defaultStatus: MatterStatus): MatterStatus {
+  if (!value || !value.trim()) return defaultStatus;
+  const v = value.toLowerCase().trim();
+  if (v === "open" || v === "active" || v === "yes") return "open";
+  if (v === "closed" || v === "inactive" || v === "no") return "closed";
+  if (v === "pending") return "pending";
+  return defaultStatus;
+}
+
+/**
+ * Process rows into a preview of what the import will create.
+ */
+export function buildHistoricalImportPreview(
+  rows: Record<string, string>[],
+  mappings: HistoricalColumnMapping[],
+  defaults: HistoricalImportDefaults,
+  dataShape: DataShape,
+): HistoricalImportPreview {
+  const activeMappings = mappings.filter((m) => m.targetField !== "skip");
+  const fieldMap = new Map<string, string>(); // targetField → sourceColumn
+  for (const m of activeMappings) {
+    fieldMap.set(m.targetField, m.sourceColumn);
+  }
+
+  const partyFields = [
+    { field: "clientName", role: "client" as EntityMatterRole },
+    { field: "adversePartyName", role: "adverse_party" as EntityMatterRole },
+    { field: "coPartyName", role: "co_party" as EntityMatterRole },
+    { field: "witnessName", role: "witness" as EntityMatterRole },
+    { field: "expertName", role: "expert" as EntityMatterRole },
+    { field: "insurerName", role: "insurer" as EntityMatterRole },
+    { field: "opposingCounselName", role: "opposing_counsel" as EntityMatterRole },
+    { field: "otherPartyName", role: "other" as EntityMatterRole },
+  ];
+
+  const problemRows: HistoricalImportProblemRow[] = [];
+  const entityNames = new Set<string>();
+  let matterCount = 0;
+  let roleLinks = 0;
+  const duplicateEntities: HistoricalImportPreview["duplicateEntities"] = [];
+
+  // Group rows by matter for one_per_party shape
+  if (dataShape === "one_per_party") {
+    const matterGroups = new Map<string, Record<string, string>[]>();
+    const matterNameCol = fieldMap.get("matterName");
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const matterName = matterNameCol ? row[matterNameCol]?.trim() : "";
+      if (!matterName) {
+        problemRows.push({ rowNumber: i + 2, reason: "Empty matter name", data: row });
+        continue;
+      }
+      if (!matterGroups.has(matterName)) matterGroups.set(matterName, []);
+      matterGroups.get(matterName)!.push(row);
+    }
+    matterCount = matterGroups.size;
+    // Count entities from grouped rows
+    for (const groupRows of Array.from(matterGroups.values())) {
+      for (const row of groupRows) {
+        for (const pf of partyFields) {
+          const col = fieldMap.get(pf.field);
+          if (!col) continue;
+          const value = row[col]?.trim();
+          if (!value) continue;
+          const names = defaults.multiValueHandling === "split" ? splitMultiValue(value) : [value];
+          for (const name of names) {
+            entityNames.add(name.toLowerCase());
+            roleLinks++;
+          }
+        }
+      }
+    }
+  } else {
+    // one_per_matter: each row is one matter
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const matterNameCol = fieldMap.get("matterName");
+      const matterName = matterNameCol ? row[matterNameCol]?.trim() : "";
+      if (!matterName) {
+        problemRows.push({ rowNumber: i + 2, reason: "Empty matter name", data: row });
+        continue;
+      }
+      // Check dates
+      const openDateCol = fieldMap.get("openDate");
+      const closeDateCol = fieldMap.get("closeDate");
+      if (openDateCol && row[openDateCol]?.trim()) {
+        const parsed = tryParseDate(row[openDateCol]);
+        if (!parsed && defaults.dateErrorHandling === "show_errors") {
+          problemRows.push({ rowNumber: i + 2, reason: `Date "${row[openDateCol]}" couldn't be parsed`, data: row });
+          continue;
+        }
+      }
+      if (closeDateCol && row[closeDateCol]?.trim()) {
+        const parsed = tryParseDate(row[closeDateCol]);
+        if (!parsed && defaults.dateErrorHandling === "show_errors") {
+          problemRows.push({ rowNumber: i + 2, reason: `Date "${row[closeDateCol]}" couldn't be parsed`, data: row });
+          continue;
+        }
+      }
+
+      matterCount++;
+      for (const pf of partyFields) {
+        const col = fieldMap.get(pf.field);
+        if (!col) continue;
+        const value = row[col]?.trim();
+        if (!value) continue;
+        const names = defaults.multiValueHandling === "split" ? splitMultiValue(value) : [value];
+        for (const name of names) {
+          entityNames.add(name.toLowerCase());
+          roleLinks++;
+        }
+      }
+    }
+  }
+
+  // Check for duplicates against existing entities
+  for (const name of Array.from(entityNames)) {
+    for (const existing of entities) {
+      const score = similarity(name, existing.fullLegalName);
+      if (score >= 0.7) {
+        const existingMatterCount = matters.filter((m) =>
+          m.parties.some((p) => p.entityId === existing.entityId)
+        ).length;
+        duplicateEntities.push({
+          importName: name,
+          importRole: "client",
+          matterRef: "",
+          matchedEntityId: existing.entityId,
+          matchedEntityName: existing.fullLegalName,
+          matchScore: score,
+          existingMatterCount,
+          action: "link_existing",
+        });
+        break; // Only report first match per entity
+      }
+    }
+  }
+
+  const readyEntities = entityNames.size - duplicateEntities.length;
+
+  return {
+    mattersToCreate: matterCount,
+    entitiesToCreate: entityNames.size,
+    roleLinksToCreate: roleLinks,
+    duplicateEntities,
+    readyEntities,
+    problemRows,
+  };
+}
+
+/**
+ * Execute the historical matter import.
+ */
+export function executeHistoricalImport(
+  rows: Record<string, string>[],
+  mappings: HistoricalColumnMapping[],
+  defaults: HistoricalImportDefaults,
+  dataShape: DataShape,
+  sourceLabel: string,
+  duplicateActions: Record<string, "link_existing" | "import_new" | "skip">,
+): HistoricalImportResult {
+  const activeMappings = mappings.filter((m) => m.targetField !== "skip");
+  const fieldMap = new Map<string, string>();
+  for (const m of activeMappings) {
+    fieldMap.set(m.targetField, m.sourceColumn);
+  }
+
+  const partyFields = [
+    { field: "clientName", role: "client" as EntityMatterRole },
+    { field: "adversePartyName", role: "adverse_party" as EntityMatterRole },
+    { field: "coPartyName", role: "co_party" as EntityMatterRole },
+    { field: "witnessName", role: "witness" as EntityMatterRole },
+    { field: "expertName", role: "expert" as EntityMatterRole },
+    { field: "insurerName", role: "insurer" as EntityMatterRole },
+    { field: "opposingCounselName", role: "opposing_counsel" as EntityMatterRole },
+    { field: "otherPartyName", role: "other" as EntityMatterRole },
+  ];
+
+  let mattersImported = 0;
+  let entitiesCreated = 0;
+  let entitiesLinked = 0;
+  let roleLinksCreated = 0;
+  let skippedRows = 0;
+
+  const defaultStatus = (defaults.missingStatus === "leave_blank" ? "closed" : defaults.missingStatus) as MatterStatus;
+
+  function resolveEntity(name: string): string | null {
+    const key = name.toLowerCase();
+    const action = duplicateActions[key];
+
+    if (action === "skip") return null;
+
+    if (action === "link_existing") {
+      // Find existing entity
+      for (const existing of entities) {
+        if (similarity(key, existing.fullLegalName) >= 0.7) {
+          entitiesLinked++;
+          return existing.entityId;
+        }
+      }
+    }
+
+    // Import as new
+    const entityType = defaults.entityTypeDetection === "auto"
+      ? detectEntityType(name)
+      : defaults.entityTypeDetection as EntityType;
+
+    const newEntity = addEntity({
+      fullLegalName: name,
+      entityType,
+      firstName: entityType === "person" ? name.split(" ")[0] : undefined,
+      lastName: entityType === "person" ? name.split(" ").slice(1).join(" ") || undefined : undefined,
+    });
+    entitiesCreated++;
+    return newEntity.entityId;
+  }
+
+  function importMatterRow(row: Record<string, string>) {
+    const matterNameCol = fieldMap.get("matterName");
+    const matterName = matterNameCol ? row[matterNameCol]?.trim() : "";
+    if (!matterName) { skippedRows++; return; }
+
+    const matterNumberCol = fieldMap.get("matterNumber");
+    const statusCol = fieldMap.get("status");
+    const attorneyCol = fieldMap.get("responsibleAttorney");
+    const practiceCol = fieldMap.get("practiceArea");
+    const openDateCol = fieldMap.get("openDate");
+    const closeDateCol = fieldMap.get("closeDate");
+
+    const matterParties: Array<{ entityId: string; role: EntityMatterRole }> = [];
+
+    for (const pf of partyFields) {
+      const col = fieldMap.get(pf.field);
+      if (!col) continue;
+      const value = row[col]?.trim();
+      if (!value) continue;
+      const names = defaults.multiValueHandling === "split" ? splitMultiValue(value) : [value];
+      for (const name of names) {
+        const entityId = resolveEntity(name);
+        if (entityId) {
+          matterParties.push({ entityId, role: pf.role });
+          roleLinksCreated++;
+        }
+      }
+    }
+
+    const openDate = openDateCol ? tryParseDate(row[openDateCol]) : null;
+    const closeDate = closeDateCol ? tryParseDate(row[closeDateCol]) : null;
+
+    const matter = createMatter({
+      matterName,
+      matterNumber: matterNumberCol ? row[matterNumberCol]?.trim() : undefined,
+      status: parseStatus(statusCol ? row[statusCol] : undefined, defaultStatus),
+      responsibleAttorney: attorneyCol ? row[attorneyCol]?.trim() : undefined,
+      practiceArea: practiceCol ? row[practiceCol]?.trim() : undefined,
+      parties: matterParties,
+    });
+
+    // Patch dates onto the created matter
+    if (openDate) matter.openDate = openDate;
+    if (closeDate) matter.closeDate = closeDate;
+    if (matter.status === "closed" && closeDate) matter.closeDate = closeDate;
+
+    mattersImported++;
+  }
+
+  if (dataShape === "one_per_party") {
+    // Group by matter, then create one matter per group
+    const matterGroups = new Map<string, Record<string, string>[]>();
+    const matterNameCol = fieldMap.get("matterName");
+    for (const row of rows) {
+      const matterName = matterNameCol ? row[matterNameCol]?.trim() : "";
+      if (!matterName) { skippedRows++; continue; }
+      if (!matterGroups.has(matterName)) matterGroups.set(matterName, []);
+      matterGroups.get(matterName)!.push(row);
+    }
+    // Merge each group into a single combined row and import
+    for (const [, groupRows] of Array.from(matterGroups.entries())) {
+      // Take metadata from first row, merge party names
+      const combined = { ...groupRows[0] };
+      // For party columns, concatenate all values
+      for (const pf of partyFields) {
+        const col = fieldMap.get(pf.field);
+        if (!col) continue;
+        const allValues = groupRows.map((r) => r[col]?.trim()).filter(Boolean);
+        combined[col] = allValues.join("; ");
+      }
+      importMatterRow(combined);
+    }
+  } else {
+    for (const row of rows) {
+      importMatterRow(row);
+    }
+  }
+
+  return {
+    mattersImported,
+    entitiesCreated,
+    entitiesLinked,
+    roleLinksCreated,
+    skippedRows,
+    sourceLabel,
+  };
 }
 
 /** Demo stats for the reviewer dashboard */

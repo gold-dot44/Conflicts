@@ -169,6 +169,86 @@ export interface SensitivitySettings {
   threshold: number;    // 0-100, minimum composite score
 }
 
+// --- Historical Matter Import types ---
+
+export type DataShape = "one_per_matter" | "one_per_party" | "mixed";
+
+export type MissingStatusDefault = "closed" | "open" | "pending" | "leave_blank";
+export type EntityTypeDetection = "auto" | "person" | "company";
+export type MultiValueHandling = "split" | "keep_single";
+export type DateErrorHandling = "skip" | "show_errors";
+
+export interface HistoricalImportDefaults {
+  missingStatus: MissingStatusDefault;
+  entityTypeDetection: EntityTypeDetection;
+  multiValueHandling: MultiValueHandling;
+  dateErrorHandling: DateErrorHandling;
+}
+
+export interface HistoricalMappingTarget {
+  field: string;
+  category: "matter" | "party" | "entity";
+  label: string;
+  partyRole?: EntityMatterRole;
+}
+
+export interface HistoricalImportRow {
+  matterName: string;
+  matterNumber?: string;
+  status?: string;
+  responsibleAttorney?: string;
+  practiceArea?: string;
+  openDate?: string;
+  closeDate?: string;
+  clientName?: string;
+  adversePartyName?: string;
+  coPartyName?: string;
+  witnessName?: string;
+  expertName?: string;
+  insurerName?: string;
+  opposingCounselName?: string;
+  otherPartyName?: string;
+  entityType?: string;
+}
+
+export interface HistoricalColumnMapping {
+  sourceColumn: string;
+  targetField: string;   // key of HistoricalImportRow or "skip"
+}
+
+export interface HistoricalImportProblemRow {
+  rowNumber: number;
+  reason: string;
+  data: Record<string, string>;
+}
+
+export interface HistoricalImportPreview {
+  mattersToCreate: number;
+  entitiesToCreate: number;
+  roleLinksToCreate: number;
+  duplicateEntities: Array<{
+    importName: string;
+    importRole: string;
+    matterRef: string;
+    matchedEntityId: string;
+    matchedEntityName: string;
+    matchScore: number;
+    existingMatterCount: number;
+    action: "link_existing" | "import_new" | "skip";
+  }>;
+  readyEntities: number;
+  problemRows: HistoricalImportProblemRow[];
+}
+
+export interface HistoricalImportResult {
+  mattersImported: number;
+  entitiesCreated: number;
+  entitiesLinked: number;
+  roleLinksCreated: number;
+  skippedRows: number;
+  sourceLabel: string;
+}
+
 export interface LateralImportRow {
   fullLegalName: string;
   firstName?: string;
