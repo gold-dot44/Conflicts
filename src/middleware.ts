@@ -18,8 +18,7 @@ export default DEMO_MODE
 export const config = {
   matcher: [
     "/search/:path*",
-    "/lateral-import/:path*",
-    "/historical-import/:path*",
+    "/import/:path*",
     "/ethical-walls/:path*",
     "/audit/:path*",
     "/admin/:path*",
