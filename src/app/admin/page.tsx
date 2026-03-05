@@ -1,9 +1,27 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import type { FuzzyWeights } from "@/types";
 
+interface ClioStatus {
+  configured: boolean;
+  connected: boolean;
+  connectedAt: string | null;
+  lastSync: string | null;
+  lastSyncResult: string | null;
+}
+
 export default function AdminPage() {
+  return (
+    <Suspense fallback={<div className="text-gray-500">Loading...</div>}>
+      <AdminContent />
+    </Suspense>
+  );
+}
+
+function AdminContent() {
+  const searchParams = useSearchParams();
   const [weights, setWeights] = useState<FuzzyWeights>({
     levenshtein: 0.3,
     trigram: 0.3,
@@ -15,10 +33,22 @@ export default function AdminPage() {
   const [newSuppression, setNewSuppression] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [clioStatus, setClioStatus] = useState<ClioStatus | null>(null);
+  const [clioSyncing, setClioSyncing] = useState(false);
+  const [clioMessage, setClioMessage] = useState("");
 
   useEffect(() => {
     fetchConfig();
-  }, []);
+    fetchClioStatus();
+
+    // Handle OAuth redirect params
+    if (searchParams.get("clio_success")) {
+      setClioMessage("Clio connected successfully!");
+      fetchClioStatus();
+    } else if (searchParams.get("clio_error")) {
+      setClioMessage(`Clio connection failed: ${searchParams.get("clio_error")}`);
+    }
+  }, [searchParams]);
 
   async function fetchConfig() {
     try {
@@ -59,6 +89,42 @@ export default function AdminPage() {
     setSaving(false);
   }
 
+  async function fetchClioStatus() {
+    try {
+      const res = await fetch("/api/clio/status");
+      if (res.ok) setClioStatus(await res.json());
+    } catch {
+      // ignore
+    }
+  }
+
+  function connectClio() {
+    const clientId = process.env.NEXT_PUBLIC_CLIO_CLIENT_ID;
+    // Construct OAuth authorization URL
+    const redirectUri = encodeURIComponent(window.location.origin + "/api/clio/callback");
+    const url = `https://app.clio.com/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}`;
+    window.location.href = url;
+  }
+
+  async function syncClio() {
+    setClioSyncing(true);
+    setClioMessage("");
+    try {
+      const res = await fetch("/api/clio/sync", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setClioMessage(`Sync complete: ${data.contacts} contacts, ${data.matters} matters`);
+      } else {
+        setClioMessage(`Sync failed: ${data.error}`);
+      }
+      fetchClioStatus();
+    } catch {
+      setClioMessage("Sync failed: network error");
+    } finally {
+      setClioSyncing(false);
+    }
+  }
+
   const weightSum =
     weights.levenshtein + weights.trigram + weights.soundex +
     weights.metaphone + weights.fullText;
@@ -66,6 +132,74 @@ export default function AdminPage() {
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Admin Settings</h1>
+
+      {/* Clio Integration */}
+      <section className="bg-white rounded-lg shadow-sm border p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          Clio Integration
+        </h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Connect to Clio to automatically sync contacts and matters into the conflict checking system.
+        </p>
+
+        {clioStatus && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${clioStatus.connected ? "bg-green-500" : clioStatus.configured ? "bg-yellow-500" : "bg-gray-400"}`} />
+              <span className="text-sm font-medium text-gray-700">
+                {clioStatus.connected
+                  ? "Connected"
+                  : clioStatus.configured
+                  ? "Configured but not connected"
+                  : "Not configured"}
+              </span>
+            </div>
+
+            {clioStatus.connectedAt && (
+              <p className="text-xs text-gray-500">
+                Connected: {new Date(clioStatus.connectedAt).toLocaleString()}
+              </p>
+            )}
+            {clioStatus.lastSync && (
+              <p className="text-xs text-gray-500">
+                Last sync: {new Date(clioStatus.lastSync).toLocaleString()}
+                {clioStatus.lastSyncResult && ` — ${clioStatus.lastSyncResult}`}
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              {!clioStatus.connected && clioStatus.configured && (
+                <button
+                  onClick={connectClio}
+                  className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+                >
+                  Connect to Clio
+                </button>
+              )}
+              {clioStatus.connected && (
+                <button
+                  onClick={syncClio}
+                  disabled={clioSyncing}
+                  className="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50"
+                >
+                  {clioSyncing ? "Syncing..." : "Sync Now"}
+                </button>
+              )}
+              {!clioStatus.configured && (
+                <p className="text-xs text-gray-500">
+                  Set CLIO_CLIENT_ID and CLIO_CLIENT_SECRET environment variables to enable.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {clioMessage && (
+          <p className={`mt-3 text-sm ${clioMessage.includes("fail") || clioMessage.includes("error") ? "text-red-600" : "text-green-600"}`}>
+            {clioMessage}
+          </p>
+        )}
+      </section>
 
       <section className="bg-white rounded-lg shadow-sm border p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">
