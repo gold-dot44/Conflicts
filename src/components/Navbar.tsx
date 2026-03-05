@@ -31,16 +31,10 @@ export function Navbar() {
                   Quick Search
                 </Link>
                 <Link
-                  href="/lateral-import"
+                  href="/import"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
-                  Lateral Import
-                </Link>
-                <Link
-                  href="/historical-import"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
-                >
-                  Historical Import
+                  Import
                 </Link>
                 <Link
                   href="/ethical-walls"

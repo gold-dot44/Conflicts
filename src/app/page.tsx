@@ -446,10 +446,10 @@ function Dashboard({ canReview }: { canReview: boolean }) {
         </div>
 
         <Link
-          href="/lateral-import"
+          href="/import"
           className="block w-full px-3 py-2 bg-white border text-gray-700 rounded-md text-sm text-center hover:bg-gray-50"
         >
-          Lateral Hire Import
+          Import Data
         </Link>
       </div>
     </div>
