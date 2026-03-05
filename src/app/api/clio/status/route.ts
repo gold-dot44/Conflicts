@@ -3,6 +3,8 @@ import { query } from "@/lib/db";
 
 import { DEMO_MODE } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const configured = !!(process.env.CLIO_CLIENT_ID && process.env.CLIO_CLIENT_SECRET);
 

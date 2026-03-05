@@ -9,6 +9,8 @@ import type { CheckRequestType, SubjectRole, EntityType } from "@/types";
  * GET /api/conflict-checks
  * Query params: ?view=pending|recent|all
  */
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const view = request.nextUrl.searchParams.get("view") ?? "recent";
 

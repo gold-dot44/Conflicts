@@ -30,6 +30,8 @@ const DEMO_WALLS = [
   },
 ];
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   if (DEMO_MODE) {
     return NextResponse.json({ walls: DEMO_WALLS });

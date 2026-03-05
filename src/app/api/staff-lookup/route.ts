@@ -6,6 +6,8 @@ import { DEMO_MODE } from "@/lib/env";
 import { getMattersForStaff } from "@/lib/demo-data";
 import type { StaffLookupResult, EntityMatterRole, StaffRole, MatterStatus } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const upn = request.nextUrl.searchParams.get("upn");
   if (!upn) {

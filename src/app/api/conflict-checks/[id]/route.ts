@@ -5,6 +5,8 @@ import { getCheckRequestById, getEnrichedSubjectResults } from "@/lib/demo-data"
  * GET /api/conflict-checks/[id]
  * Returns the conflict check request with enriched search results.
  */
+export const dynamic = "force-dynamic";
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

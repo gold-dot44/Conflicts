@@ -3,6 +3,8 @@ import { addPartyToMatter } from "@/lib/demo-data";
 
 import { DEMO_MODE } from "@/lib/env";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   if (!DEMO_MODE) {
     return NextResponse.json({ error: "Not implemented" }, { status: 501 });

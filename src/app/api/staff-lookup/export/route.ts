@@ -7,6 +7,8 @@ import { getMattersForStaff, getStaffNameByUpn } from "@/lib/demo-data";
 import type { StaffLookupResult, EntityMatterRole, StaffRole, MatterStatus } from "@/types";
 import { STAFF_ROLE_LABELS } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const upn = request.nextUrl.searchParams.get("upn");
   const format = request.nextUrl.searchParams.get("format") ?? "xlsx";

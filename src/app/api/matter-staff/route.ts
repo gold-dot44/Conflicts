@@ -11,6 +11,8 @@ import {
 } from "@/lib/demo-data";
 import type { StaffRole } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const matterId = request.nextUrl.searchParams.get("matterId");
   if (!matterId || !isValidUuid(matterId)) {
