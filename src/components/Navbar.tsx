@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useState } from "react";
 
@@ -13,60 +12,60 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center space-x-8">
-            <Link href="/" className="text-xl font-bold text-primary-700">
+            <a href="/" className="text-xl font-bold text-primary-700">
               Conflicts
-            </Link>
+            </a>
             {session && (
               <>
-                <Link
+                <a
                   href="/"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
                   New Check
-                </Link>
-                <Link
+                </a>
+                <a
                   href="/search"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
                   Quick Search
-                </Link>
-                <Link
+                </a>
+                <a
                   href="/import"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
                   Import
-                </Link>
-                <Link
+                </a>
+                <a
                   href="/ethical-walls"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
                   Ethical Walls
-                </Link>
-                <Link
+                </a>
+                <a
                   href="/audit"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
                   Audit Trail
-                </Link>
-                <Link
+                </a>
+                <a
                   href="/staff-lookup"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
                   Staff Lookup
-                </Link>
-                <Link
+                </a>
+                <a
                   href="/admin"
                   className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
                 >
                   Admin
-                </Link>
-                <Link
+                </a>
+                <a
                   href="/help"
                   className="text-gray-400 hover:text-gray-600 px-2 py-2 text-sm"
                   title="Help & Glossary"
                 >
                   ?
-                </Link>
+                </a>
               </>
             )}
           </div>
