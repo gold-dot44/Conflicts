@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 const NAV_LINKS = [
@@ -13,12 +14,9 @@ const NAV_LINKS = [
   { href: "/admin", label: "Admin" },
 ];
 
-function navigate(href: string) {
-  window.location.href = href;
-}
-
 export function Navbar() {
   const { data: session } = useSession();
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -26,22 +24,24 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center space-x-8">
-            <a href="/" onClick={() => navigate("/")} className="text-xl font-bold text-primary-700">
+            <a href="/" className="text-xl font-bold text-primary-700">
               Conflicts
             </a>
             {NAV_LINKS.map(({ href, label }) => (
               <a
                 key={href + label}
                 href={href}
-                onClick={() => navigate(href)}
-                className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
+                className={
+                  pathname === href
+                    ? "text-primary-700 font-semibold px-3 py-2 text-sm border-b-2 border-primary-600"
+                    : "text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
+                }
               >
                 {label}
               </a>
             ))}
             <a
               href="/help"
-              onClick={() => navigate("/help")}
               className="text-gray-400 hover:text-gray-600 px-2 py-2 text-sm"
               title="Help & Glossary"
             >
