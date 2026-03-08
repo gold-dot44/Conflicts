@@ -3,6 +3,20 @@
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useState } from "react";
 
+const NAV_LINKS = [
+  { href: "/", label: "New Check" },
+  { href: "/search", label: "Quick Search" },
+  { href: "/import", label: "Import" },
+  { href: "/ethical-walls", label: "Ethical Walls" },
+  { href: "/audit", label: "Audit Trail" },
+  { href: "/staff-lookup", label: "Staff Lookup" },
+  { href: "/admin", label: "Admin" },
+];
+
+function navigate(href: string) {
+  window.location.href = href;
+}
+
 export function Navbar() {
   const { data: session } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -12,62 +26,27 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center space-x-8">
-            <a href="/" className="text-xl font-bold text-primary-700">
+            <a href="/" onClick={() => navigate("/")} className="text-xl font-bold text-primary-700">
               Conflicts
             </a>
-            {session && (
-              <>
-                <a
-                  href="/"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
-                >
-                  New Check
-                </a>
-                <a
-                  href="/search"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
-                >
-                  Quick Search
-                </a>
-                <a
-                  href="/import"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
-                >
-                  Import
-                </a>
-                <a
-                  href="/ethical-walls"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
-                >
-                  Ethical Walls
-                </a>
-                <a
-                  href="/audit"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
-                >
-                  Audit Trail
-                </a>
-                <a
-                  href="/staff-lookup"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
-                >
-                  Staff Lookup
-                </a>
-                <a
-                  href="/admin"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
-                >
-                  Admin
-                </a>
-                <a
-                  href="/help"
-                  className="text-gray-400 hover:text-gray-600 px-2 py-2 text-sm"
-                  title="Help & Glossary"
-                >
-                  ?
-                </a>
-              </>
-            )}
+            {NAV_LINKS.map(({ href, label }) => (
+              <a
+                key={href + label}
+                href={href}
+                onClick={() => navigate(href)}
+                className="text-gray-600 hover:text-gray-900 px-3 py-2 text-sm font-medium"
+              >
+                {label}
+              </a>
+            ))}
+            <a
+              href="/help"
+              onClick={() => navigate("/help")}
+              className="text-gray-400 hover:text-gray-600 px-2 py-2 text-sm"
+              title="Help & Glossary"
+            >
+              ?
+            </a>
           </div>
           <div className="flex items-center">
             {session ? (
